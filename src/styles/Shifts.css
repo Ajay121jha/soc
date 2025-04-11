@@ -1,0 +1,125 @@
+.shifts-wrapper {
+  display: flex;
+  justify-content: flex-start;
+  align-items: flex-start;
+  padding: 0;
+  margin: 0;
+  min-height: 90%;
+  width: 100%;
+}
+
+.shifts-calendar {
+  width: 100%;
+  height: 100%;
+  padding: 15px;
+  margin: 0;
+}
+
+.fc {
+  min-height: 100%;
+  min-width: 100%;
+}
+
+.fc-header-toolbar {
+  font-family: Calibri, sans-serif;
+  padding: 0 !important;
+  margin: 0 0 10px 0 !important;
+}
+
+.fc-button {
+  background-color: #2b144d !important;
+  color: white !important;
+  border: none;
+  font-family: Calibri, sans-serif;
+  font-weight: bold;
+  padding: 6px 12px;
+  border-radius: 4px;
+  transition: background-color 0.3s ease;
+}
+
+.fc-button:hover {
+  background-color: #ce95ff !important;
+  cursor: pointer;
+}
+
+.fc-button-active {
+  background-color: #deacff !important;
+  color: white !important;
+}
+
+/* ====== Modal Styles ====== */
+.modal {
+  background: #ffffff;
+  padding: 25px 30px;
+  max-width: 500px;
+  width: 90%;
+  margin: auto;
+  border-radius: 10px;
+  position: relative;
+  top: 20%;
+  font-family: Calibri, sans-serif;
+  box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.2);
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+
+.modal h2 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 20px;
+  color: #2b144d;
+}
+
+.modal textarea {
+  width: 100%;
+  padding: 10px;
+  font-size: 15px;
+  font-family: Calibri, sans-serif;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  resize: none;
+}
+
+.modal button {
+  background-color: #2b144d;
+  color: white;
+  padding: 8px 14px;
+  margin-top: 12px;
+  margin-right: 10px;
+  border: none;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.modal button:hover {
+  background-color: #471a6f;
+}
+
+.modal p {
+  font-size: 14px;
+  color: red;
+  margin-top: 10px;
+}
+
+/* Fade-in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

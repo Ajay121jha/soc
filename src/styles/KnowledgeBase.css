@@ -1,0 +1,163 @@
+.kb-container {
+  padding: 10px;
+  display: flex;
+  justify-content: center;
+}
+.buttoncon{
+  display:flex;
+  gap:10px;
+}
+
+.kb-card {
+  width: 100%;
+  max-width: 100%;
+  background-color: #fff;
+  padding: 10px 0px 0px 0px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  overflow-x: auto;
+}
+
+.kb-search-bar {
+  display: flex;
+  gap: 10px;
+  width:75%;
+  margin-bottom: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.kb-input {
+  flex: 1 1 250px;
+  min-width: 180px;
+  padding: 10px 12px;
+  font-size: 16px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+.kb-button,
+.kb-button-outline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 10px 14px;
+  font-size: 14px;
+  border: none;
+  cursor: pointer;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.kb-button {
+  margin-top:0px;
+  background-color: #fff;
+  color: #d92fff;
+  border: 1px solid hsl(288, 100%, 56%);
+}
+
+.kb-button:hover {
+  background-color: #e7bbff;
+  color: #fff;
+  border: none;
+}
+
+.kb-button-outline {
+  background-color: white;
+  border: 1px solid #ccc;
+}
+
+.kb-results {
+  margin-top: 20px;
+}
+
+.kb-subtitle {
+  font-size: 18px;
+  font-weight: 500;
+  margin-bottom: 10px;
+}
+
+.kb-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.kb-table th,
+.kb-table td {
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.kb-no-results {
+  text-align: center;
+  color: #888;
+  font-style: italic;
+}
+
+.kb-back-button {
+  margin-top: 5px;
+}
+
+/* Media Query: Tablet */
+@media screen and (max-width: 1024px) {
+  .kb-input {
+    font-size: 15px;
+  }
+
+  .kb-button,
+  .kb-button-outline {
+    font-size: 13px;
+  }
+
+  .kb-table th,
+  .kb-table td {
+    font-size: 13px;
+    padding: 10px;
+  }
+}
+
+/* Media Query: Mobile */
+@media screen and (max-width: 768px) {
+  .kb-search-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .kb-input,
+  .kb-button,
+  .kb-button-outline {
+    width: 100%;
+  }
+
+  .kb-table {
+    display: block;
+    overflow-x: auto;
+    font-size: 13px;
+  }
+
+  .kb-table th,
+  .kb-table td {
+    padding: 8px;
+  }
+}
+
+/* Extra small devices */
+@media screen and (max-width: 480px) {
+  .kb-table {
+    font-size: 12px;
+  }
+
+  .kb-input {
+    font-size: 14px;
+  }
+
+  .kb-button {
+    font-size: 12px;
+    padding: 8px 10px;
+    
+  }
+}

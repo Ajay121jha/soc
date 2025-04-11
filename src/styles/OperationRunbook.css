@@ -1,0 +1,63 @@
+.knowledge-base {
+    padding: 20px;
+    max-width: 100%;
+  }
+  
+  .search-bar-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 80%;
+    margin-bottom: 5px;
+  }
+  
+  .search-input {
+    width: 50%;
+    padding: 10px;
+    font-size: 16px;
+    border-radius: 8px;
+    border: 1px solid #007BFF;
+  }
+  
+  .search-btn, .filter-btn {
+    padding: 10px 14px;
+    background-color: #ffff;
+    color: #007BFF;
+    border: 1px solid #007BFF;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out;
+  }
+  
+  .search-btn:hover, .filter-btn:hover {
+    background-color: #0056b3;
+    color:#ffff;
+  }
+  
+  .filter-dropdown {
+    margin-bottom: 20px;
+    padding: 10px;
+    font-size: 16px;
+    border-radius: 6px;
+    border: 1px solid #007BFF;
+    align-items: center;
+  }
+  
+  .customer-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  
+  .customer-table th, .customer-table td {
+    padding: 10px;
+    border: 1px solid #ddd;
+    text-align: left;
+  }
+  .kb-card {
+    width: 100%;
+    max-width: 100%;
+    background-color: #fff;
+    padding: 10px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }

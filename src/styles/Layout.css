@@ -1,0 +1,131 @@
+/* Global Styling */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: Arial, sans-serif;
+}
+
+/* Container */
+.container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.logo-container {
+    display: flex;
+    align-items: center;
+}
+
+.logo-image {
+    width: 40px;
+    height: auto;
+    margin-right: 10px;
+}
+
+.logo-text{
+    font-family: Calibri, sans-serif;
+    font-weight: lighter;
+    font-size: 28px;
+    padding: 0;
+    margin: 0;
+}
+
+.navbar {
+    background: #2b144d;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+}
+
+.login-btn {
+    background: rgb(255, 255, 255);
+    color: #333;
+    font-size: 18px;
+    margin-top: 0;
+    border: 2px solid rgb(193, 93, 255);
+    border-radius: 8px;
+    padding: 4px 18px;
+    cursor: pointer;
+}
+
+.login-btn:hover {
+    background: rgb(252, 204, 255);
+}
+
+.register-btn {
+    background: rgb(255, 255, 255);
+    color: #333;
+    font-size: 18px;
+    margin-top: 0;
+    border: 2px solid rgb(193, 93, 255);
+    border-radius: 8px;
+    padding: 4px 14px;
+    cursor: pointer;
+}
+
+.register-btn:hover {
+    background: rgb(252, 204, 255);
+}
+
+/* Logout Button */
+.logout-btn {
+    background: red;
+    color: white;
+    font-size: 18px;
+    margin-top: 0;
+    border: none;
+    padding: 5px 12px;
+    cursor: pointer;
+}
+
+.logout-btn:hover {
+    background: darkred;
+}
+
+/* Main Content */
+.content {
+    flex-grow: 1;
+    padding: 0px;
+    background: #f4f4f4;
+}
+
+/* Footer */
+.footer {
+    background: #2b144d;
+    color: white;
+    text-align: center;
+    padding: 8px;
+    font-size: 16px;
+}
+
+/* Navigation Links Styling */
+.nav-links {
+    list-style: none;
+    display: flex;
+    gap: 20px;
+    padding: 0;
+    align-items: center;
+  }
+  
+  .nav-links li {
+    margin: 0;
+  }
+  
+  .nav-links a {
+    text-decoration: none;
+    color: white;
+    font-family: Calibri, sans-serif;
+    font-size: 18px;
+    background: none;
+    border: None;
+    padding: 0;
+  }
+
+.nav-links a.active {
+    color: rgb(227, 223, 20);
+    transition: color 0.3s ease-in-out;
+}
