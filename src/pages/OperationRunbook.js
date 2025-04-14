@@ -1,86 +1,46 @@
-
-import { useEffect, useState } from "react";
-import axios from "axios";
-import { FaFilter } from "react-icons/fa";
+import { useState } from "react";
 import "../styles/OperationRunbook.css";
 
+// Make sure these components are default exports in their files
+import Assets from "../components/Assets";
+import SLA from "../components/SLA";
+import EscalationMatrix from "../components/EscalationMatrix";
+import Token from "../components/Token"; // You can rename this file to Tokens.jsx if you prefer
+
 const OperationRunbooks = () => {
-  const [customers, setCustomers] = useState([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [osFilter, setOsFilter] = useState("");
-  const [showFilter, setShowFilter] = useState(false);
+  const [activeTab, setActiveTab] = useState("Assets");
 
-  useEffect(() => {
-    axios.get("http://localhost:5000/api/customers")
-      .then(res => setCustomers(res.data))
-      .catch(err => console.error("Error:", err));
-  }, []);
-
-  const filteredData = customers.filter(cust => {
-    const matchesSearch =
-      cust.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      cust.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      cust.operatingSystem.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      cust.location.toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchesOS = osFilter ? cust.operatingSystem === osFilter : true;
-    return matchesSearch && matchesOS;
-  });
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case "Assets":
+        return <Assets />;
+      case "SLA":
+        return <SLA />;
+      case "EscalationMatrix":
+        return <EscalationMatrix />;
+      case "Tokens":
+        return <Token />;
+      default:
+        return null;
+    }
+  };
 
   return (
-    <div className="knowledge-base">
-      <div className="kb-card">
-        <div className="search-bar-container">
-          <input
-            type="text"
-            placeholder="Search by Name, Email, OS, Location..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="search-input"
-          />
-          <button className="search-btn">Search</button>
-          <button className="filter-btn" onClick={() => setShowFilter(!showFilter)}>
-            <FaFilter />
-          </button>
-        </div>
+    <div className="runbook-container">
 
-        {showFilter && (
-          <select
-            className="filter-dropdown"
-            value={osFilter}
-            onChange={(e) => setOsFilter(e.target.value)}
+      <div className="tabs">
+        {["Assets", "SLA", "EscalationMatrix", "Tokens"].map((tab) => (
+          <button
+            key={tab}
+            className={`tab ${activeTab === tab ? "active" : ""}`}
+            onClick={() => setActiveTab(tab)}
           >
-            <option value="">All Operating System</option>
-            <option value="Windows">Windows</option>
-            <option value="Linux">Linux</option>
-            <option value="macOS">macOS</option>
-          </select>
-        )}
-
-
-
-        <table className="customer-table">
-
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>OS</th>
-              <th>Location</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredData.map((cust, i) => (
-              <tr key={i}>
-                <td>{cust.name}</td>
-                <td>{cust.email}</td>
-                <td>{cust.operatingSystem}</td>
-                <td>{cust.location}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            {tab}
+          </button>
+        ))}
       </div>
+
+      <div className="tab-content">{renderTabContent()}</div>
     </div>
   );
 };

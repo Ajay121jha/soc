@@ -1,0 +1,56 @@
+.assets-container {
+    padding: 20px;
+  }
+  
+  h2 {
+    margin-bottom: 20px;
+    color: #333;
+  }
+  
+  .form-group {
+    margin-bottom: 15px;
+  }
+  
+  label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 5px;
+  }
+  
+  select,
+  textarea {
+    width: 100%;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    font-size: 14px;
+  }
+  
+  .submit-btn {
+    padding: 10px 20px;
+    background-color: #007bff;
+    color: white;
+    font-weight: bold;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  
+  .submit-btn:hover {
+    background-color: #0056b3;
+  }
+  
+  .token-details {
+    margin-top: 25px;
+    background-color: #f4f4f4;
+    padding: 15px;
+    border-left: 4px solid green;
+    border-radius: 8px;
+  }
+  
+  .error-msg {
+    margin-top: 10px;
+    color: red;
+    font-weight: bold;
+  }
+  
