@@ -7,21 +7,23 @@ import pandas as pd
 import mysql.connector
 import os
 from datetime import datetime
+from datetime import datetime, timedelta
 import calendar
+import uuid
+
 
 def setup_routes(app):
     @app.route("/")
     def home():
         return jsonify({"message": "API is running!"})
-    @app.route("/api/login", methods=["POST", "OPTIONS"])
 
+    @app.route("/api/login", methods=["POST", "OPTIONS"])
     def login():
         if request.method == "OPTIONS":
             return jsonify({'message': 'CORS preflight response'}), 200
         data = request.get_json()
         username = data.get("username")
         password = data.get("password")
-
 
         if authenticate_user(username, password):
             print("Login successful: ", username)
@@ -36,14 +38,11 @@ def setup_routes(app):
         username = data.get("username")
         password = data.get("password")
 
-        # Ensure both username and password are provided
         if not username or not password:
             return jsonify({"error": "Username and password are required"}), 400
 
         conn = get_db_connection()
         cursor = conn.cursor()
-
-        # Check if the username already exists in the database
         cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
         existing_user = cursor.fetchone()
 
@@ -51,10 +50,7 @@ def setup_routes(app):
             conn.close()
             return jsonify({"error": "Username already taken"}), 409
 
-        # Hash the password before storing it in the database
-        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')  # Convert to string for storage
-
-        # Insert the new user into the database
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (username, hashed_password))
         conn.commit()
         conn.close()
@@ -68,29 +64,80 @@ def setup_routes(app):
         cursor.execute("SELECT id, username FROM users")
         users = cursor.fetchall()
         conn.close()
-
         return jsonify(users)
-    
+
+    @app.route("/api/tokens", methods=["POST"])
+    def create_token():
+        data = request.get_json()
+        customer_id = data.get("customer_id")
+        issue_description = data.get("issue_description")
+
+        if not customer_id or not issue_description:
+            return jsonify({"error": "Missing required fields"}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT sla_response_minutes, sla_resolution_minutes FROM sla_policies WHERE customer_id = %s", (customer_id,))
+        sla = cursor.fetchone()
+        if not sla:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "SLA not found for customer"}), 404
+
+        sla_response_minutes, sla_resolution_minutes = sla
+
+        cursor.execute("SELECT id, name FROM engineers WHERE level = 1 LIMIT 1")
+        eng = cursor.fetchone()
+        if not eng:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "No Level 1 engineer available"}), 500
+
+        engineer_id, engineer_name = eng
+
+        created_at = datetime.utcnow()
+        response_due = created_at + timedelta(minutes=sla_response_minutes)
+        resolution_due = created_at + timedelta(minutes=sla_resolution_minutes)
+        generated_token = str(uuid.uuid4())
+
+        cursor.execute("""
+            INSERT INTO token (customer_id, issue_description, assigned_engineer_id, sla_response_minutes, sla_resolution_minutes, created_at, status, current_level, token)
+            VALUES (%s, %s, %s, %s, %s, %s, 'Open', 1, %s)
+        """, (
+            customer_id, issue_description, engineer_id,
+            sla_response_minutes, sla_resolution_minutes,
+            created_at, generated_token
+        ))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "message": "Token created successfully",
+            "token": generated_token,
+            "assigned_engineer": engineer_name,
+            "response_due": response_due.isoformat(),
+            "resolution_due": resolution_due.isoformat()
+        }), 201
 
     @app.route("/api/customers", methods=["GET"])
     def get_customers():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT name, email, operatingSystem, location FROM customers")
+        cursor.execute("SELECT id, name, email FROM customers")
         customers = cursor.fetchall()
         conn.close()
         return jsonify(customers)
 
-    conn= mysql.connector.connect(
-        host = "localhost",
-        user ="root",
-        passwd = "12345",
-        database = "soc"
+    conn = mysql.connector.connect(
+        host="localhost",
+        user="root",
+        passwd="12345",
+        database="soc"
     )
 
-    
-    # def setup_routes(app):
-        
     @app.route('/api/search', methods=['GET'])
     def search():
         query = request.args.get('query', '').lower()
@@ -106,7 +153,6 @@ def setup_routes(app):
 
         filtered = []
         for row in rows:
-        # Format created_at safely
             created_at_str = row.get('created_at')
             created_day = ""
             created_date = ""
@@ -117,9 +163,8 @@ def setup_routes(app):
                     created_day = calendar.day_name[dt.weekday()].lower()
                     created_date = dt.strftime("%Y-%m-%d").lower()
                 except ValueError:
-                    pass  # Ignore invalid date formats
+                    pass
 
-        # Match query against all fields including date and day
             if not query or (
                 query in (row['ip_address'] or '').lower()
                 or query in (row['title'] or '').lower()
@@ -133,12 +178,6 @@ def setup_routes(app):
                 filtered.append(row)
 
         return jsonify(filtered)
-    
- 
-
-
-
-
 
     @app.route('/api/import', methods=['POST'])
     def import_excel():

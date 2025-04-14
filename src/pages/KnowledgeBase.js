@@ -8,6 +8,7 @@ const KnowledgeBase = () => {
   const [filteredData, setFilteredData] = useState([]);
   const [showingSearch, setShowingSearch] = useState(false);
   const cache = useRef(new Map());
+  const [selectedOption, setSelectedOption] = useState("Select Action");
 
   useEffect(() => {
     fetchData();
@@ -63,6 +64,13 @@ const KnowledgeBase = () => {
       alert("Import failed: " + result.message);
     }
   };
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  const handleOptionClick = (option) => {
+    console.log("Selected:", option);
+    setSelectedOption(option);
+    setShowDropdown(false);
+  };
 
   const handleGoBack = () => {
     setQuery("");
@@ -87,6 +95,20 @@ const KnowledgeBase = () => {
             </button>
             <label htmlFor="import-file" className="kb-button">Import</label>
             <input type="file" id="import-file" accept=".xlsx, .csv" onChange={handleImport} style={{ display: "none" }} />
+
+            <div className="dropdown-button-container">
+  <button className="dropdown-button" onClick={() => setShowDropdown(!showDropdown)}>
+    {selectedOption} <span className="arrow">&#9662;</span>
+  </button>
+  {showDropdown && (
+    <ul className="dropdown-menu">
+      <li onClick={() => handleOptionClick('Local DB')}>Local DB</li>
+      <li onClick={() => handleOptionClick('ITSM API')}>ITSM API</li>
+    </ul>
+  )}
+</div>
+
+
           </div>
         </div>
 
