@@ -1,0 +1,119 @@
+.handover_wrapper {
+    padding: 10px 30px 30px 30px;
+    height: 100%;
+    font-family: 'Times New Roman' !important;
+    margin: auto;
+    background-color: #222222;
+}
+
+.handover_display {
+    color: white;
+    margin: 0;
+}
+
+
+.date_picker_section {
+    margin-bottom: 0px;
+}
+
+.date_picker {
+    padding: 5px;
+    font-size: 16px;
+    margin-left: 7px;
+    border: 1px solid #333333;
+    background-color: #cacaca;
+    color: #000000;
+    filter: invert(1);
+}
+
+
+
+.shift_picker {
+    padding: 5px;
+    font-size: 16px;
+    margin-left: 5px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #353535;
+    color: #ffffff;
+}
+
+.cluster_picker {
+    padding: 5px;
+    font-size: 16px;
+    margin-left: 7px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: #353535;
+    color: #ffffff;
+}
+
+.disclaimer{
+    width: 100%;
+    font-size: 35px;
+    font-weight: bold;
+    color: #ff4141;
+    text-align: center;
+}
+
+.table_title {
+    color: white;
+    font-size: 20px !important;
+    font-weight: bold;
+    text-align: center;
+    padding: 12px;
+    border: 1px solid #222222;
+}
+
+.shift_info{
+    display: flex;
+    flex-direction: row;
+    padding: 0px;
+    gap: 20px;
+    align-items: center;
+}
+
+
+.shift_info p {
+    margin: 4px 0;
+    
+}
+
+.handover_table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    color: white;
+}
+
+.handover_table th {
+    color: white;
+    background-color: #670097 !important;
+    border: 1px solid #b5b5b5;
+    padding: 5px;
+    font-size: 18px;
+}
+
+.handover_table td {
+    border: 1px solid #b5b5b5;
+    padding: 10px;
+    vertical-align: top;
+    text-align: left;
+}
+
+.handover_table th {
+    background-color: #222222;
+}
+
+.handover_table td {
+    white-space: pre-wrap;
+    cursor: text;
+}
+
+.status-important {
+  background-color: #8f0000; /* light red */
+}
+
+.status-informational {
+  background-color: #007b00; /* light green */
+}

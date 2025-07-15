@@ -1,6 +1,8 @@
 .kb-container {
   padding: 10px;
   display: flex;
+  width: 100%;
+  height: auto;
   justify-content: center;
 }
 .buttoncon{
@@ -11,18 +13,19 @@
 .kb-card {
   width: 100%;
   max-width: 100%;
-  background-color: #fff;
-  padding: 10px 5px 5px 5px;
-  border-radius: 12px;
+  background-color: #424242;
+  padding: 7px 15px 15px 15px;
+  border-radius: 10px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   overflow-x: auto;
+  border: 1px solid #ccc;
 }
 
-.kb-search-bar {
+.tool-bar {
   display: flex;
   gap: 10px;
-  width:75%;
-  margin-bottom: 10px;
+  width:100%;
+  margin-bottom: 5px;
   align-items: center;
   flex-wrap: wrap;
 }
@@ -59,6 +62,10 @@
   border-radius: 4px;
   overflow: hidden;
 }
+/* .dropdown{
+  padding: 0px;
+  width:0px;
+} */
 
 .dropdown-menu li {
   padding: 10px 12px;
@@ -70,19 +77,21 @@
   background-color: #f0f0f0;
 }
 .dropdown-button:hover{
-  background-color: #e7bbff;
+  background-color: #e2acff;
   color:white;
   border:none;
 }
 
 
-.kb-input {
+.search-bar {
   flex: 1 1 250px;
   min-width: 180px;
   padding: 10px 12px;
   font-size: 16px;
-  border: 1px solid hsl(288, 100%, 56%);
+  border: 1px solid #ccc;
   border-radius: 6px;
+  color: white;
+  background-color: #666;
 }
 
 .kb-button,
@@ -100,10 +109,32 @@
 }
 
 .kb-button {
+  display:flex;
+  align-items: center;
+  justify-content: center;
   margin-top:0px;
   background-color: #fff;
-  color: #d92fff;
-  border: 1px solid hsl(288, 100%, 56%);
+  color: #9400b6;
+  border: 1px solid hsl(288, 100%, 21%);
+}
+.kb-imp{
+  display:flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 0px;
+  font-size: 14px;
+  border-radius: 6px;
+  white-space: nowrap;
+  padding: 10px 14px;
+  font-weight: 100;
+  background-color: #fff;
+  color: #6b0083;
+  border: 1px solid hsl(288, 100%, 20%);
+}
+.kb-imp:hover{
+  background-color: #e7bbff;
+  color: #fff;
+  border: #e7bbff;
 }
 
 .kb-button:hover {
@@ -111,6 +142,39 @@
   color: #fff;
   border: none;
 }
+
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-toggle {
+  cursor: pointer;
+}
+
+.dropdown-menu {
+  position: absolute;
+  background-color: white;
+  border: 1px solid #ddd;
+  min-width: 100px;
+  z-index: 1;
+  display: none;
+  flex-direction: column;
+}
+
+.dropdown:hover .dropdown-menu {
+  display: flex;
+}
+
+.dropdown-menu div {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.dropdown-menu div:hover {
+  background-color: #f0f0f0;
+}
+
 
 .kb-button-outline {
   background-color: white;
@@ -129,8 +193,11 @@
 
 .kb-table {
   width: 100%;
+  height: auto;
   border-collapse: collapse;
   font-size: 14px;
+  color: white;
+  background-color: #666;
 }
 
 .kb-table th,
@@ -151,62 +218,80 @@
   margin-top: 5px;
 }
 
-/* Media Query: Tablet */
-@media screen and (max-width: 1024px) {
-  .kb-input {
-    font-size: 15px;
-  }
 
-  .kb-button,
-  .kb-button-outline {
-    font-size: 13px;
-  }
 
-  .kb-table th,
-  .kb-table td {
-    font-size: 13px;
-    padding: 10px;
-  }
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
 }
 
-/* Media Query: Mobile */
-@media screen and (max-width: 768px) {
-  .kb-search-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .kb-input,
-  .kb-button,
-  .kb-button-outline {
-    width: 100%;
-  }
-
-  .kb-table {
-    display: block;
-    overflow-x: auto;
-    font-size: 13px;
-  }
-
-  .kb-table th,
-  .kb-table td {
-    padding: 8px;
-  }
+.modal-form {
+  background-color: #fff;
+  padding: 20px;
+  border-radius: 12px;
+  width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  animation: fadeIn 0.3s ease-in-out;
 }
 
-/* Extra small devices */
-@media screen and (max-width: 480px) {
-  .kb-table {
-    font-size: 12px;
-  }
+.modal-form h2 {
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+  text-align: center;
+}
 
-  .kb-input {
-    font-size: 14px;
-  }
+.modal-buttons {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+}
 
-  .kb-button {
-    font-size: 12px;
-    padding: 8px 10px;
-    
-  }
+.modal-buttons .kb-button.cancel {
+  background-color: #eee;
+  color: #333;
+}
+
+.pagination{
+  display:flex;
+  justify-content: center;
+  align-items: center;
+  margin-top:10px;
+}
+
+.kb-pagination {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.kb-pagination .kb-button.active {
+  background-color: #4caf50;
+  color: white;
+}
+
+
+
+
+
+
+
+
+/* Responsive table cell wrapping */
+.kb-table th,
+.kb-table td {
+    white-space: normal !important;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-width: 300px;
 }
