@@ -321,7 +321,7 @@ We highly recommend reviewing and implementing these actions promptly to minimiz
 
       {/* Main Content Area */}
       <div className="flex-1 p-8 overflow-y-auto">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Client Cybersecurity Advisories</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-8">Client Advisories</h1>
 
         {isLoading && filteredAdvisories.length === 0 ? (
           <div className="bg-white p-6 rounded-lg shadow-md text-center text-gray-600 flex items-center justify-center gap-2">

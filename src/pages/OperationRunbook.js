@@ -371,7 +371,7 @@ export default function OperationRunbook() {
                   <h3 className="tab-title">Scope of Work</h3>
                   {isAdmin && (
                     <div className="action-buttons">
-                      <button className="action-button" onClick={() => setShowUploadModal(true)} style ={{ marginRight: "10px"}}>
+                      <button className="action-button" onClick={() => setShowUploadModal(true)} style={{ marginRight: "10px" }}>
                         <Upload size={16} /> Upload SOW PDF
                       </button>
                       <button className="action-button delete-button" onClick={handleDeletePDF}>
@@ -383,10 +383,10 @@ export default function OperationRunbook() {
 
                 {clientPDF ? (
                   <iframe
-  src={`http://localhost:5000/pdfs/client_${selectedClient}.pdf#toolbar=0`}
-  className="pdf-viewer"
-  title="PDF Preview"
-/>
+                    src={`http://localhost:5000/pdfs/client_${selectedClient}.pdf#toolbar=0`}
+                    className="pdf-viewer"
+                    title="PDF Preview"
+                  />
                 ) : (
                   <p className="no-data-message">No PDF uploaded for this client.</p>
                 )}
@@ -473,44 +473,56 @@ export default function OperationRunbook() {
                   )}
                 </div>
 
-                <table className="escalation_matrix_table">
-                  <thead>
-                    <tr>
-                      <th rowSpan="2">Level</th>
-                      <th colSpan="4">Client Side</th>
-                      <th colSpan="4">GTBharat Side</th>
-                    </tr>
-                    <tr>
-                      <th>Name</th>
-                      <th>Email</th>
-                      <th>Contact</th>
-                      <th>Designation</th>
-                      <th>Name</th>
-                      <th>Email</th>
-                      <th>Contact</th>
-                      <th>Designation</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {escalationData.length === 0 ? (
-                      <tr><td colSpan="9" className="no-data-message">No escalation entries found</td></tr>
-                    ) : (
-                      escalationData.map((entry, index) => (
-                        <tr key={index}>
-                          <td>{entry.level}</td>
-                          <td>{entry.client_name}</td>
-                          <td>{entry.client_email}</td>
-                          <td>{entry.client_contact}</td>
-                          <td>{entry.client_designation}</td>
-                          <td>{entry.gtb_name}</td>
-                          <td>{entry.gtb_email}</td>
-                          <td>{entry.gtb_contact}</td>
-                          <td>{entry.gtb_designation}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+
+
+                <div className="escalation-section">
+                  <div className="escalation-table-container">
+                    {
+                      <table className="escalation_matrix_table">
+                        <thead>
+                          <tr>
+                            <th rowSpan="2">Level</th>
+                            <th colSpan="4">Client Side</th>
+                            <th colSpan="4">GTBharat Side</th>
+                          </tr>
+                          <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Contact</th>
+                            <th>Designation</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Contact</th>
+                            <th>Designation</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {escalationData.length === 0 ? (
+                            <tr><td colSpan="9" className="no-data-message">No escalation entries found</td></tr>
+                          ) : (
+                            escalationData.map((entry, index) => (
+                              <tr key={index}>
+                                <td>{entry.level}</td>
+                                <td>{entry.client_name}</td>
+                                <td>{entry.client_email}</td>
+                                <td>{entry.client_contact}</td>
+                                <td>{entry.client_designation}</td>
+                                <td>{entry.gtb_name}</td>
+                                <td>{entry.gtb_email}</td>
+                                <td>{entry.gtb_contact}</td>
+                                <td>{entry.gtb_designation}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    }
+                  </div>
+                </div>
+
+
+
+
               </div>
             )}
 
@@ -519,7 +531,19 @@ export default function OperationRunbook() {
               <div className="passwords_list modern-tab-content">
                 <div className="tab-controls">
                   <h3 className="tab-title">Passwords List</h3>
-                  {/* Add search/filter/import/export if needed for passwords */}
+                  {
+                    <select
+                      name="mode"
+                      value={filters.mode}
+                      onChange={handleFilterChange}
+                      className="filter-dropdown"
+                    >
+                      <option value="">All Modes</option>
+                      <option value="RDP">RDP</option>
+                      <option value="SSH">SSH</option>
+                    </select>
+                  }
+
                 </div>
                 <table className="passwords_list_table">
                   <thead>
