@@ -11,6 +11,13 @@ from app.token_utils import generate_token
 from app.token_utils import validate_token as verify_token
 from datetime import datetime
 
+import urllib3
+
+import requests
+import certifi
+import feedparser
+
+
 
 PDF_DIR = os.path.join(os.getcwd(), "pdfs")
 os.makedirs(PDF_DIR, exist_ok=True)
@@ -980,4 +987,129 @@ def setup_routes(app):
 
 
 
+    @app.route('/api/advisories', methods=['GET', 'POST'])
+    def advisories():
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        if request.method == 'GET':
+            cursor.execute("SELECT * FROM advisories ORDER BY timestamp DESC")
+            data = cursor.fetchall()
+            conn.close()
+            return jsonify(data)
+
+        if request.method == 'POST':
+            data = request.get_json()
+            required_fields = [
+                "client_id", "client_name", "service_or_os", "update_type",
+                "description", "impact", "recommended_actions", "advisory_content"
+            ]
+            if not all(field in data and data[field] for field in required_fields):
+                return jsonify({"error": "Missing required fields"}), 400
+
+            query = """
+            INSERT INTO advisories (
+                client_id, client_name, service_or_os, update_type,
+                description, impact, recommended_actions, advisory_content, timestamp
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+            values = (
+                data["client_id"], data["client_name"], data["service_or_os"],
+                data["update_type"], data["description"], data["impact"],
+                data["recommended_actions"], data["advisory_content"],
+                datetime.utcnow()
+            )
+            cursor.execute(query, values)
+            conn.commit()
+            conn.close()
+            return jsonify({"message": "Advisory submitted successfully!"}), 201
+
+
+
+    @app.route('/api/rss-feeds', methods=['GET', 'POST'])
+    def rss_feeds():
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        if request.method == 'GET':
+            cursor.execute("SELECT * FROM rss_feeds")
+            feeds = cursor.fetchall()
+            conn.close()
+            return jsonify(feeds)
+
+        if request.method == 'POST':
+            data = request.get_json()
+            url = data.get("url")
+            if not url:
+                return jsonify({"error": "RSS feed URL is required"}), 400
+
+            cursor.execute("INSERT INTO rss_feeds (url) VALUES (%s)", (url,))
+            conn.commit()
+            feed_id = cursor.lastrowid
+            conn.close()
+            return jsonify({"id": feed_id, "url": url}), 201
+
+
+
+
+    @app.route('/api/rss-feeds/<int:id>', methods=['DELETE'])
+    def delete_rss_feed(id):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM rss_feeds WHERE id = %s", (id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"message": "RSS Feed deleted successfully!"}), 200
     
+
+
+
+
+
+    
+
+
+
+
+
+
+    @app.route('/api/rss-feed-items', methods=['GET'])
+    def get_rss_feed_items():
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT url FROM rss_feeds")
+        feeds = cursor.fetchall()
+        conn.close()
+
+        all_items = []
+        for feed in feeds:
+            url = feed['url']
+            print(f"Parsing feed: {url}")
+            try:
+                # Bypass SSL verification
+                response = requests.get(url, verify=False)
+                parsed = feedparser.parse(response.content)
+
+                if parsed.bozo:
+                    print(f"Error parsing feed {url}: {parsed.bozo_exception}")
+                    continue
+
+                print(f"Entries found: {len(parsed.entries)}")
+                for entry in parsed.entries[:5]:
+                    print(f"Title: {entry.get('title', 'No Title')}")
+                    all_items.append({
+                        "title": entry.get("title", "No Title"),
+                        "link": entry.get("link", "#"),
+                        "summary": entry.get("summary", ""),
+                        "published": entry.get("published", "")
+                    })
+            except Exception as e:
+                print(f"Error fetching feed {url}: {e}")
+
+        print(f"Total items collected: {len(all_items)}")
+        return jsonify(all_items)
+
+
+
+
+

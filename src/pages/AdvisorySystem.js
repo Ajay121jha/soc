@@ -21,6 +21,7 @@ export default function AdvisorySystem() {
   const [rssFeeds, setRssFeeds] = useState([]);
   const [newRssFeedUrl, setNewRssFeedUrl] = useState('');
   const [showRssModal, setShowRssModal] = useState(false);
+  const [rssItems, setRssItems] = useState([]);
 
   // Effect to fetch clients from Flask backend
   useEffect(() => {
@@ -81,6 +82,24 @@ export default function AdvisorySystem() {
     fetchRssFeeds();
   }, []);
 
+  useEffect(() => {
+    const fetchRssItems = async () => {
+      try {
+        const response = await fetch('http://localhost:5000/api/rss-feed-items');
+        const data = await response.json();
+        setRssItems(data);
+      } catch (error) {
+        console.error("Error fetching RSS items:", error);
+      }
+    };
+    fetchRssItems();
+  }, []);
+
+
+
+
+
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setNewAdvisory(prev => ({ ...prev, [name]: value }));
@@ -137,7 +156,9 @@ export default function AdvisorySystem() {
       return;
     }
 
-    const clientName = clients.find(c => c.id === selectedClient)?.name;
+
+    const clientName = clients.find(c => c.id === Number(selectedClient))?.name;
+
     if (!clientName) {
       alert('Selected client not found. Please try again.');
       return;
@@ -212,7 +233,7 @@ We highly recommend reviewing and implementing these actions promptly to minimiz
   };
 
   const filteredAdvisories = advisories.filter(advisory =>
-    (selectedClient === '' || advisory.client_id === selectedClient) &&
+    (selectedClient === '' || advisory.client_id === Number(selectedClient)) &&
     (searchTerm === '' ||
       advisory.client_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       advisory.service_or_os.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -354,6 +375,56 @@ We highly recommend reviewing and implementing these actions promptly to minimiz
           </div>
         )}
       </div>
+
+
+
+
+
+
+
+      <div className="mt-8">
+        <h2 className="text-2xl font-bold text-gray-800 mb-4">Latest Cybersecurity News</h2>
+        {rssItems.length === 0 ? (
+          <p className="text-gray-600">No news available from RSS feeds.</p>
+        ) : (
+          <ul className="space-y-4">
+            {rssItems.map((item, index) => (
+              <li key={index} className="bg-white p-4 rounded-lg shadow-md">
+                <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-blue-600 font-semibold">
+                  {item.title}
+                </a>
+                <p className="text-gray-700 mt-2">{item.summary}</p>
+                
+<div dangerouslySetInnerHTML={{ __html: item.summary }} />
+
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
       {/* RSS Feed Management Modal */}
       {showRssModal && (

@@ -384,6 +384,8 @@ export default function OperationRunbook() {
                 {clientPDF ? (
                   <iframe
                     src={`http://localhost:5000/pdfs/client_${selectedClient}.pdf#toolbar=0`}
+                    width="100%"
+                    height="600px"
                     className="pdf-viewer"
                     title="PDF Preview"
                   />
