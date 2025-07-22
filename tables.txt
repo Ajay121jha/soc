@@ -1,0 +1,122 @@
+-- Table: users
+ CREATE TABLE `users` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `username` varchar(50) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `role` varchar(50) NOT NULL DEFAULT 'analyst',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `username` (`username`)
+);
+
+
+
+-- Table: shift_assignments
+CREATE TABLE `shift_assignments` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `date` date NOT NULL,
+  `shift_type` enum('morning','evening','night') NOT NULL,
+  `start_time` time NOT NULL,
+  `end_time` time NOT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+);
+
+
+
+-- Table: shift_employee_map
+CREATE TABLE `shift_employee_map` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `shift_id` int NOT NULL,
+  `employee_id` int NOT NULL,
+  `cab_facility` enum('Yes','No') DEFAULT 'No',
+  PRIMARY KEY (`id`),
+  KEY `shift_id` (`shift_id`),
+  KEY `employee_id` (`employee_id`),
+  FOREIGN KEY (`shift_id`) REFERENCES `shift_assignments` (`id`),
+  FOREIGN KEY (`employee_id`) REFERENCES `users` (`id`)
+);
+
+
+
+-- Table: handover_notes
+CREATE TABLE `handover_notes` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `shift_id` int NOT NULL,
+  `employee_id` int NOT NULL,
+  `note` text NOT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `shift_id` (`shift_id`),
+  KEY `employee_id` (`employee_id`),
+  FOREIGN KEY (`shift_id`) REFERENCES `shift_assignments` (`id`),
+  FOREIGN KEY (`employee_id`) REFERENCES `users` (`id`)
+);
+
+
+
+-- Table: knowledge_base
+CREATE TABLE `knowledge_base` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `entity_name` varchar(255) DEFAULT NULL,
+  `asset` varchar(255) DEFAULT NULL,
+  `itsm_ref` varchar(100) DEFAULT NULL,
+  `asset_details` text,
+  `status` enum('Blocked','Allowed') DEFAULT NULL,
+  `reason` text,
+  `context` text,
+  `remarks` text,
+  PRIMARY KEY (`id`)
+);
+
+
+
+
+--Table: clients
+ CREATE TABLE `clients` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `name` (`name`)
+);
+
+
+
+--Table client_assets
+CREATE TABLE `client_assets` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `client_id` int NOT NULL,
+  `asset_name` varchar(100) DEFAULT NULL,
+  `location` varchar(100) DEFAULT NULL,
+  `ip_address` varchar(45) DEFAULT NULL,
+  `mode` enum('RDP','SSH') DEFAULT NULL,
+  `asset_type` varchar(100) DEFAULT NULL,
+  `asset_owner` varchar(100) DEFAULT NULL,
+  `remarks` text,
+  PRIMARY KEY (`id`),
+  KEY `client_id` (`client_id`),
+  FOREIGN KEY (`client_id`) REFERENCES `clients` (`id`)
+);
+
+
+--Table escalation_matrix
+CREATE TABLE `escalation_matrix` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `client_id` int NOT NULL,
+  `level` varchar(50) NOT NULL,
+  `contact_name` varchar(100) NOT NULL,
+  `contact_email` varchar(100) DEFAULT NULL,
+  `contact_number` varchar(20) DEFAULT NULL,
+  `sla_response_hours` decimal(5,2) NOT NULL,
+  `sla_resolution_hours` decimal(5,2) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `client_id` (`client_id`),
+  FOREIGN KEY (`client_id`) REFERENCES `clients` (`id`)
+);
+
+--Table clusters
+CREATE TABLE `clusters` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `username` varchar(100) NOT NULL,
+  `cluster` int NOT NULL,
+  PRIMARY KEY (`id`)
+);
