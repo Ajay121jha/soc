@@ -1,3 +1,4 @@
+
 /* General Body and Font Styling */
 body {
   margin: 0;
@@ -42,6 +43,13 @@ body {
   margin-bottom: 16px;
 }
 
+
+.w-96.bg-white.p-6.border-l.border-gray-200.overflow-y-auto{
+  width:37%;
+  margin:15px;
+  padding:19px;
+}
+
 /* Search Input in Sidebar */
 .relative.mb-4 input {
   padding-left: 40px; /* Space for icon */
@@ -83,6 +91,36 @@ body {
   transition: all 0.2s ease-in-out;
 }
 
+.space-y-4{
+  margin:12px;
+}
+
+.flex.gap-2.mb-4{
+  display:flex;
+  justify-content:center;
+  align-items: center;
+  gap:10px;
+
+}
+
+
+
+ button1 {
+    padding: 12px;
+    margin:0px 10px 0px 0px;
+    border: 1px solid green;
+    border-radius: 4px;
+    background-color: #4caf50;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+
+
+
+
+
 .space-y-4 input:focus,
 .space-y-4 select:focus,
 .space-y-4 textarea:focus {
@@ -112,26 +150,36 @@ body {
 
 /* Main Content Area */
 .flex-1.p-8.overflow-y-auto {
-  padding: 32px; /* More generous padding */
-  background-color: #f4f7f6; /* Matches body background */
+  padding: 7px; /* More generous padding */
+  background-color: #ffffff; /* Matches body background */
 }
 
 .flex-1.p-8.overflow-y-auto h1 {
-  font-size: 2.25rem; /* Larger main title */
+  display:flex;
+  justify-content: center;
+  font-size: 25px; /* Larger main title */
+  
   font-weight: 700;
   color: #2c3e50;
-  margin-bottom: 32px;
+  margin-bottom: 7px;
 }
 
 /* Advisory Cards Grid */
 .grid.grid-cols-1.md\:grid-cols-2.lg\:grid-cols-2.gap-6 {
+  height:80vh;
   gap: 24px; /* Consistent gap */
+  overflow: auto;
+  
+
+  
+
 }
 
 /* Individual Advisory Card */
 .bg-white.p-6.rounded-lg.shadow-md.border.border-gray-200 {
   background-color: #ffffff;
-  padding: 24px;
+  /* padding: 0px 9px 0px 9px; */
+  margin:5px;
   border-radius: 12px; /* More rounded corners */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); /* Softer shadow */
   border-color: #e0e0e0; /* Subtle border */
@@ -349,12 +397,13 @@ body {
   }
 
   .flex-1.p-8.overflow-y-auto {
-    padding: 24px;
+    padding:7px;
+    margin:0px 5px 0px 5px;
   }
 
   .flex-1.p-8.overflow-y-auto h1 {
-    font-size: 2rem;
-    margin-bottom: 24px;
+    font-size: 25px;
+    margin-bottom: 9px;
   }
 
   .grid.grid-cols-1.md\:grid-cols-2.lg\:grid-cols-2.gap-6 {
@@ -385,3 +434,90 @@ body {
     width: 100%; /* Full width button */
   }
 }
+
+/* Styles for Delete Functionality */
+.advisory-card {
+  position: relative;
+  transition: all 0.2s ease-in-out;
+}
+
+.advisory-card.is-deleting {
+  cursor: pointer;
+}
+
+.advisory-card.selected {
+  border-color: #e74c3c; /* Red border for selected cards */
+  box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.3);
+}
+
+.advisory-checkbox {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 22px;
+  height: 22px;
+  accent-color: #e74c3c; /* Red checkbox */
+  cursor: pointer;
+}
+
+.delete-advisory-button,
+.confirm-delete-button,
+.cancel-delete-button {
+  padding: 0.6rem 1.2rem;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.btn{
+      display: flex;
+    justify-content:end;
+    gap:10px;
+}
+
+.delete-advisory-button {
+  background-color: #7193c9;
+  color: white;
+  margin-bottom:9px;
+}
+
+.delete-advisory-button:hover {
+  background-color: #c0392b;
+  transform: translateY(-1px);
+}
+
+.confirm-delete-button {
+  background-color: #c0392b; /* Darker red for confirm */
+  color: white;
+}
+
+.confirm-delete-button:hover:not(:disabled) {
+  background-color: #a93226;
+  transform: translateY(-1px);
+}
+
+.confirm-delete-button:disabled {
+  background-color: #bdc3c7;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.cancel-delete-button {
+  background-color: #ecf0f1;
+  color: #34495e;
+  border: 1px solid #bdc3c7;
+}
+
+.cancel-delete-button:hover {
+  background-color: #bdc3c7;
+}
+
+
+
+

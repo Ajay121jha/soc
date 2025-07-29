@@ -11,8 +11,6 @@ from app.token_utils import generate_token
 from app.token_utils import validate_token as verify_token
 from datetime import datetime
 
-import urllib3
-
 import requests
 import certifi
 import feedparser
@@ -105,7 +103,6 @@ def setup_routes(app):
         except Exception as e:
             return jsonify({"error": str(e)}), 500
     
-
 
 
     @app.route('/api/update_cab_status', methods=['PATCH'])
@@ -853,6 +850,8 @@ def setup_routes(app):
 
 
 
+
+
     @app.route('/api/clusters', methods=['GET'])
     def get_clusters():
         try:
@@ -911,10 +910,6 @@ def setup_routes(app):
             return jsonify({'message': 'User deleted from cluster successfully'}), 200
         except Exception as e:
             return jsonify({'error': str(e)}), 500
-
-
-
-
 
 
 
@@ -1024,6 +1019,26 @@ def setup_routes(app):
             conn.close()
             return jsonify({"message": "Advisory submitted successfully!"}), 201
 
+    @app.route('/api/advisories/delete', methods=['POST'])
+    def delete_advisories():
+        data = request.get_json()
+        ids = data.get('ids', [])
+        if not ids:
+            return jsonify({"message": "No IDs provided"}), 400
+
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            format_strings = ','.join(['%s'] * len(ids))
+            cursor.execute(f"DELETE FROM advisories WHERE id IN ({format_strings})", tuple(ids))
+            conn.commit()
+            deleted_count = cursor.rowcount
+            cursor.close()
+            conn.close()
+            return jsonify({"message": f"{deleted_count} advisories deleted successfully!"}), 200
+        except Exception as e:
+            print(f"Error deleting advisories: {e}")
+            return jsonify({"message": "An error occurred while deleting advisories."}), 500
 
 
     @app.route('/api/rss-feeds', methods=['GET', 'POST'])
@@ -1032,7 +1047,11 @@ def setup_routes(app):
         cursor = conn.cursor(dictionary=True)
 
         if request.method == 'GET':
-            cursor.execute("SELECT * FROM rss_feeds")
+            client_id = request.args.get("client_id")
+            if not client_id:
+                return jsonify({"error": "Client ID is required"}), 400
+            
+            cursor.execute("SELECT * FROM rss_feeds WHERE client_id = %s", (client_id,))
             feeds = cursor.fetchall()
             conn.close()
             return jsonify(feeds)
@@ -1040,16 +1059,16 @@ def setup_routes(app):
         if request.method == 'POST':
             data = request.get_json()
             url = data.get("url")
-            if not url:
-                return jsonify({"error": "RSS feed URL is required"}), 400
+            client_id = data.get("client_id")
 
-            cursor.execute("INSERT INTO rss_feeds (url) VALUES (%s)", (url,))
+            if not url or not client_id:
+                return jsonify({"error": "RSS feed URL and client ID are required"}), 400
+
+            cursor.execute("INSERT INTO rss_feeds (url, client_id) VALUES (%s, %s)", (url, client_id))
             conn.commit()
             feed_id = cursor.lastrowid
             conn.close()
-            return jsonify({"id": feed_id, "url": url}), 201
-
-
+            return jsonify({"id": feed_id, "url": url, "client_id": client_id}), 201
 
 
     @app.route('/api/rss-feeds/<int:id>', methods=['DELETE'])
@@ -1061,55 +1080,59 @@ def setup_routes(app):
         conn.close()
         return jsonify({"message": "RSS Feed deleted successfully!"}), 200
     
-
-
-
-
-
-    
-
-
-
-
-
-
     @app.route('/api/rss-feed-items', methods=['GET'])
     def get_rss_feed_items():
+        client_id = request.args.get('client_id')
+        search_query = request.args.get('q')
+
+        if not client_id:
+            return jsonify([])
+
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT url FROM rss_feeds")
+        cursor.execute("SELECT url FROM rss_feeds WHERE client_id = %s", (client_id,))
         feeds = cursor.fetchall()
         conn.close()
 
         all_items = []
         for feed in feeds:
             url = feed['url']
-            print(f"Parsing feed: {url}")
             try:
-                # Bypass SSL verification
+                # Use certifi's certificate bundle for verification
+                
                 response = requests.get(url, verify=False)
+
                 parsed = feedparser.parse(response.content)
 
                 if parsed.bozo:
                     print(f"Error parsing feed {url}: {parsed.bozo_exception}")
                     continue
+                
+                entries_to_process = parsed.entries
 
-                print(f"Entries found: {len(parsed.entries)}")
-                for entry in parsed.entries[:5]:
-                    print(f"Title: {entry.get('title', 'No Title')}")
+                if search_query:
+                    # Filter entries on the backend if a search query is provided
+                    filtered_entries = [
+                        entry for entry in entries_to_process
+                        if search_query.lower() in entry.get("title", "").lower() or
+                           search_query.lower() in entry.get("summary", "").lower()
+                    ]
+                    entries_to_process = filtered_entries
+                else:
+                    # Limit to the latest 5 if no search query
+                    entries_to_process = entries_to_process[:5]
+
+                for entry in entries_to_process:
                     all_items.append({
                         "title": entry.get("title", "No Title"),
                         "link": entry.get("link", "#"),
                         "summary": entry.get("summary", ""),
                         "published": entry.get("published", "")
                     })
+            except requests.exceptions.SSLError as e:
+                print(f"SSL Error for feed {url}: {e}")
+                # Optionally, you can decide to skip this feed or handle the error differently
             except Exception as e:
                 print(f"Error fetching feed {url}: {e}")
 
-        print(f"Total items collected: {len(all_items)}")
         return jsonify(all_items)
-
-
-
-
-

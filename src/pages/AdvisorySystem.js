@@ -1,9 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Briefcase, Info, AlertTriangle, Lightbulb, User, Calendar, Search, Plus, Send, Rss } from 'lucide-react'; // Added Rss icon
-import "../styles/Advisory.css"; // Corrected import path for AdvisorySystem.css
+import { Briefcase, Info, AlertTriangle, Lightbulb, User, Calendar, Search, Plus, Send, Rss, Trash2 } from 'lucide-react';
+import "../styles/Advisory.css";
+
+// Helper function to strip HTML tags and images
+const stripHtml = (html) => {
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('img').forEach(img => img.remove());
+  return doc.body.textContent || "";
+};
 
 export default function AdvisorySystem() {
-  const [clients, setClients] = useState([]); // Will be fetched from Flask
+  const [clients, setClients] = useState([]);
   const [selectedClient, setSelectedClient] = useState('');
   const [advisories, setAdvisories] = useState([]);
   const [newAdvisory, setNewAdvisory] = useState({
@@ -12,18 +20,32 @@ export default function AdvisorySystem() {
     description: '',
     impact: '',
     recommendedActions: '',
-    advisoryContent: '', // New field to store combined content or manual input
+    advisoryContent: '',
   });
   const [searchTerm, setSearchTerm] = useState('');
-  const [isLoading, setIsLoading] = useState(false); // State for overall loading
-  // Removed isGeneratingAdvisory as LLM is no longer used
+  const [isLoading, setIsLoading] = useState(false);
 
   const [rssFeeds, setRssFeeds] = useState([]);
   const [newRssFeedUrl, setNewRssFeedUrl] = useState('');
   const [showRssModal, setShowRssModal] = useState(false);
   const [rssItems, setRssItems] = useState([]);
+  const [rssSearchTerm, setRssSearchTerm] = useState('');
+  const [isRssLoading, setIsRssLoading] = useState(false);
 
-  // Effect to fetch clients from Flask backend
+  const [isDeleteMode, setIsDeleteMode] = useState(false);
+  const [selectedAdvisories, setSelectedAdvisories] = useState([]);
+
+  const [doubleClickedAdvisoryId, setDoubleClickedAdvisoryId] = useState(null);
+
+  
+  const extractSection = (content, sectionTitle) => {
+    const regex = new RegExp(`\\*\\*${sectionTitle}\\*\\*\\s*([\\s\\S]*?)(?=\\*\\*|$)`, 'i');
+    const match = content.match(regex);
+    return match ? match[1].trim() : '';
+  };
+
+
+
   useEffect(() => {
     const fetchClients = async () => {
       try {
@@ -32,10 +54,8 @@ export default function AdvisorySystem() {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
-        // FIX START: Map the array of arrays (tuples) to an array of objects
         const formattedClients = data.map(clientArray => ({ id: clientArray[0], name: clientArray[1] }));
         setClients(formattedClients);
-        // FIX END
       } catch (error) {
         console.error("Error fetching clients from backend:", error);
       }
@@ -44,7 +64,6 @@ export default function AdvisorySystem() {
     fetchClients();
   }, []);
 
-  // Effect to fetch advisories from Flask backend
   useEffect(() => {
     const fetchAdvisories = async () => {
       setIsLoading(true);
@@ -63,13 +82,17 @@ export default function AdvisorySystem() {
     };
 
     fetchAdvisories();
-  }, []); // Empty dependency array means this runs once on component mount
+  }, []);
 
-  // Effect to fetch RSS feeds
+  // Fetch RSS feeds when a client is selected
   useEffect(() => {
     const fetchRssFeeds = async () => {
+      if (!selectedClient) {
+        setRssFeeds([]);
+        return;
+      }
       try {
-        const response = await fetch('http://localhost:5000/api/rss-feeds');
+        const response = await fetch(`http://localhost:5000/api/rss-feeds?client_id=${selectedClient}`);
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -77,28 +100,37 @@ export default function AdvisorySystem() {
         setRssFeeds(data);
       } catch (error) {
         console.error("Error fetching RSS feeds:", error);
+        setRssFeeds([]);
       }
     };
     fetchRssFeeds();
-  }, []);
+  }, [selectedClient]);
 
+  // Fetch initial RSS items when a client is selected
   useEffect(() => {
-    const fetchRssItems = async () => {
+    const fetchInitialRssItems = async () => {
+      if (!selectedClient) {
+        setRssItems([]);
+        return;
+      }
+      setIsRssLoading(true);
       try {
-        const response = await fetch('http://localhost:5000/api/rss-feed-items');
+        const response = await fetch(`http://localhost:5000/api/rss-feed-items?client_id=${selectedClient}`);
         const data = await response.json();
-        setRssItems(data);
+        const processedItems = data.map(item => ({
+          ...item,
+          summary: stripHtml(item.summary)
+        }));
+        setRssItems(processedItems);
       } catch (error) {
-        console.error("Error fetching RSS items:", error);
+        console.error("Error fetching initial RSS items:", error);
+        setRssItems([]);
+      } finally {
+        setIsRssLoading(false);
       }
     };
-    fetchRssItems();
-  }, []);
-
-
-
-
-
+    fetchInitialRssItems();
+  }, [selectedClient]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -109,16 +141,39 @@ export default function AdvisorySystem() {
     setNewRssFeedUrl(e.target.value);
   };
 
+  const handleRssSearch = async () => {
+    if (!selectedClient) return;
+    setIsRssLoading(true);
+    try {
+      const response = await fetch(`http://localhost:5000/api/rss-feed-items?client_id=${selectedClient}&q=${rssSearchTerm}`);
+      const data = await response.json();
+      const processedItems = data.map(item => ({
+        ...item,
+        summary: stripHtml(item.summary)
+      }));
+      setRssItems(processedItems);
+    } catch (error) {
+      console.error("Error searching RSS items:", error);
+      setRssItems([]);
+    } finally {
+      setIsRssLoading(false);
+    }
+  };
+
   const handleAddRssFeed = async () => {
     if (!newRssFeedUrl.trim()) {
       alert('Please enter a valid RSS feed URL.');
+      return;
+    }
+    if (!selectedClient) {
+      alert('Please select a client first.');
       return;
     }
     try {
       const response = await fetch('http://localhost:5000/api/rss-feeds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: newRssFeedUrl }),
+        body: JSON.stringify({ url: newRssFeedUrl, client_id: selectedClient }),
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -149,13 +204,26 @@ export default function AdvisorySystem() {
     }
   };
 
+
+
+
+  const handleDoubleClickAdvisory = (id) => {
+    setDoubleClickedAdvisoryId(prevId => prevId === id ? null : id);
+  };
+
+
+
+
+
+
+
+
   const handleSubmitAdvisory = async (e) => {
     e.preventDefault();
     if (!selectedClient) {
       alert('Please select a client before submitting an advisory.');
       return;
     }
-
 
     const clientName = clients.find(c => c.id === Number(selectedClient))?.name;
 
@@ -164,9 +232,8 @@ export default function AdvisorySystem() {
       return;
     }
 
-    setIsLoading(true); // Set overall loading state
+    setIsLoading(true);
 
-    // Construct advisoryContent directly from form inputs
     const advisoryContent = `**Cybersecurity Advisory: ${newAdvisory.updateType} for ${newAdvisory.serviceOrOS}**
 
 **Client:** ${clientName}
@@ -202,7 +269,7 @@ We highly recommend reviewing and implementing these actions promptly to minimiz
           description: newAdvisory.description,
           impact: newAdvisory.impact,
           recommended_actions: newAdvisory.recommendedActions,
-          advisory_content: advisoryContent, // Use the manually constructed content
+          advisory_content: advisoryContent,
           timestamp: new Date().toISOString(),
         }),
       });
@@ -228,7 +295,7 @@ We highly recommend reviewing and implementing these actions promptly to minimiz
       console.error("Error adding advisory to backend:", error);
       alert('Failed to submit advisory. Please check your backend.');
     } finally {
-      setIsLoading(false); // Reset overall loading state
+      setIsLoading(false);
     }
   };
 
@@ -245,6 +312,48 @@ We highly recommend reviewing and implementing these actions promptly to minimiz
     const dateB = new Date(b.timestamp || 0);
     return dateB - dateA;
   });
+
+  const handleSelectAdvisory = (id) => {
+    setSelectedAdvisories(prevSelected => {
+      if (prevSelected.includes(id)) {
+        return prevSelected.filter(advisoryId => advisoryId !== id);
+      } else {
+        return [...prevSelected, id];
+      }
+    });
+  };
+
+  const handleDeleteAdvisories = async () => {
+    if (selectedAdvisories.length === 0) {
+      alert("Please select at least one advisory to delete.");
+      return;
+    }
+
+    if (window.confirm(`Are you sure you want to delete ${selectedAdvisories.length} selected advisory/advisories?`)) {
+      try {
+        const response = await fetch('http://localhost:5000/api/advisories/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: selectedAdvisories }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        }
+
+        setAdvisories(prev => prev.filter(advisory => !selectedAdvisories.includes(advisory.id)));
+        setIsDeleteMode(false);
+        setSelectedAdvisories([]);
+        alert('Advisories deleted successfully!');
+      } catch (error) {
+        console.error("Error deleting advisories:", error);
+        alert(`Failed to delete advisories: ${error.message}`);
+      }
+    }
+  };
+
+  const selectedClientName = clients.find(c => c.id === Number(selectedClient))?.name || '';
 
   return (
     <div className="flex min-h-screen bg-gray-100 font-inter">
@@ -265,7 +374,7 @@ We highly recommend reviewing and implementing these actions promptly to minimiz
           value={selectedClient}
           onChange={(e) => setSelectedClient(e.target.value)}
         >
-          <option value="">All Clients</option>
+          <option value="">Select a Client</option>
           {clients.map(client => (
             <option key={client.id} value={client.id}>{client.name}</option>
           ))}
@@ -335,102 +444,162 @@ We highly recommend reviewing and implementing these actions promptly to minimiz
         <button
           onClick={() => setShowRssModal(true)}
           className="mt-6 w-full bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300 transition duration-200 flex items-center justify-center gap-2"
+          disabled={!selectedClient}
         >
           <Rss size={18} /> Manage RSS Feeds
         </button>
       </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 p-8 overflow-y-auto">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Client Advisories</h1>
-
-        {isLoading && filteredAdvisories.length === 0 ? (
-          <div className="bg-white p-6 rounded-lg shadow-md text-center text-gray-600 flex items-center justify-center gap-2">
-            <svg className="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <p>Loading advisories...</p>
-          </div>
-        ) : filteredAdvisories.length === 0 ? (
-          <div className="bg-white p-6 rounded-lg shadow-md text-center text-gray-600">
-            <p>No advisories found for the selected client or search criteria.</p>
-            <p className="mt-2">Use the form on the left to create a new advisory.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
-            {filteredAdvisories.map(advisory => (
-              <div key={advisory.id} className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
-                <div className="flex items-center mb-4">
-                  <Briefcase size={20} className="text-blue-600 mr-2" />
-                  <h2 className="text-xl font-semibold text-gray-800">{advisory.client_name}</h2>
+      {/* Conditional Rendering for Main Content */}
+      {selectedClient ? (
+        <>
+          {/* Main Content Area */}
+          <div className="flex-1 p-8 overflow-y-auto">
+            <div className="flex justify-between items-center mb-8">
+              <h1 className="text-3xl font-bold text-gray-900">Client Advisories</h1>
+              {!isDeleteMode ? (
+                <div className='btn'>
+                  
+                <button
+                  onClick={() => setIsDeleteMode(true)}
+                  className="delete-advisory-button"
+                >
+                  <Trash2 size={13} /> Delete
+                </button>
                 </div>
-                <p className="text-sm text-gray-500 mb-4 flex items-center gap-1">
-                  <Calendar size={14} />
-                  {advisory.timestamp ? new Date(advisory.timestamp).toLocaleString() : 'N/A'}
-                </p>
-                <div className="prose max-w-none text-gray-700" dangerouslySetInnerHTML={{ __html: advisory.advisory_content.replace(/\n/g, '<br/>') }} />
+              ) : (
+                <div className="flex items-center gap-4">
+                  <div className='btn'>
+                  <button
+                    onClick={handleDeleteAdvisories}
+                    className="confirm-delete-button"
+                    disabled={selectedAdvisories.length === 0}
+                  >
+                    Delete Selected ({selectedAdvisories.length})
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsDeleteMode(false);
+                      setSelectedAdvisories([]);
+                    }}
+                    className="cancel-delete-button"
+                  >
+                    Cancel
+                  </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {isLoading ? (
+              <div className="bg-white p-6 rounded-lg shadow-md text-center text-gray-600 flex items-center justify-center gap-2">
+                <svg className="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p>Loading advisories...</p>
               </div>
-            ))}
+            ) : filteredAdvisories.length === 0 ? (
+              <div className="bg-white p-6 rounded-lg shadow-md text-center text-gray-600">
+                <p>No advisories found for this client.</p>
+                <p className="mt-2">Use the form on the left to create a new advisory.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+                {filteredAdvisories.map(advisory => (
+                  <div
+                    key={advisory.id}
+                    className={`advisory-card bg-white p-6 rounded-lg shadow-md border border-gray-200 ${isDeleteMode ? 'is-deleting' : ''} ${selectedAdvisories.includes(advisory.id) ? 'selected' : ''}`}
+                    onClick={() => isDeleteMode && handleSelectAdvisory(advisory.id)}
+                  >
+
+                    {doubleClickedAdvisoryId === advisory.id && (
+                      <button
+                        className="delete-advisory-button"
+                        onClick={() => {
+                          setSelectedAdvisories([advisory.id]);
+                          setIsDeleteMode(true);
+                        }}
+                      >
+                        <Trash2 size={13} /> Delete
+                      </button>
+                    )}
+
+
+                    {isDeleteMode && (
+                      <input
+                        type="checkbox"
+                        className="advisory-checkbox"
+                        checked={selectedAdvisories.includes(advisory.id)}
+                        readOnly
+                      />
+                    )}
+                    <div className="flex items-center mb-4">
+                      <Briefcase size={20} className="text-blue-600 mr-2" />
+                      <h2 className="text-xl font-semibold text-gray-800">{advisory.client_name}</h2>
+                    </div>
+                    <p className="text-sm text-gray-500 mb-4 flex items-center gap-1">
+                      <Calendar size={14} />
+                      {advisory.timestamp ? new Date(advisory.timestamp).toLocaleString() : 'N/A'}
+                    </p>
+                    <div className="prose max-w-none text-gray-700" dangerouslySetInnerHTML={{ __html: advisory.advisory_content.replace(/\n/g, '<br/>') }} />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-
-
-
-
-
-
-      <div className="mt-8">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4">Latest Cybersecurity News</h2>
-        {rssItems.length === 0 ? (
-          <p className="text-gray-600">No news available from RSS feeds.</p>
-        ) : (
-          <ul className="space-y-4">
-            {rssItems.map((item, index) => (
-              <li key={index} className="bg-white p-4 rounded-lg shadow-md">
-                <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-blue-600 font-semibold">
-                  {item.title}
-                </a>
-                <p className="text-gray-700 mt-2">{item.summary}</p>
-                
-<div dangerouslySetInnerHTML={{ __html: item.summary }} />
-
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+          {/* Latest Cybersecurity News Section */}
+          <div className="w-96 bg-white p-6 border-l border-gray-200 overflow-y-auto">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4">
+              Latest Feed {selectedClientName && `for ${selectedClientName}`}
+            </h2>
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                placeholder="Search news..."
+                className="w-full pl-4 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={rssSearchTerm}
+                onChange={(e) => setRssSearchTerm(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleRssSearch()}
+              />
+              <button1 onClick={handleRssSearch} className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                <Search size={18} />
+              </button1>
+            </div>
+            {isRssLoading ? (
+              <p className="text-gray-600">Searching...</p>
+            ) : rssItems.length === 0 ? (
+              <p className="text-gray-600">{selectedClient ? "No news available for this client or search term." : "Please select a client to see news."}</p>
+            ) : (
+              <ul className="space-y-4">
+                {rssItems.map((item, index) => (
+                  <li key={index} className="bg-white p-4 rounded-lg shadow-md border">
+                    <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-blue-600 font-semibold">
+                      {item.title}
+                    </a>
+                    <p className="text-gray-700 mt-2">{item.summary}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="flex-1 p-8 flex items-center justify-center">
+          <div className="bg-white p-8 rounded-lg shadow-md text-center text-gray-600 max-w-md">
+            <Info size={48} className="mx-auto mb-4 text-blue-500" />
+            <h2 className="text-2xl font-semibold mb-2">Welcome to the Advisory System</h2>
+            <p>Please select a client from the sidebar to view their advisories and news feeds.</p>
+          </div>
+        </div>
+      )}
 
       {/* RSS Feed Management Modal */}
       {showRssModal && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h3 className="modal-title">Manage RSS Feeds</h3>
+            <h3 className="modal-title">Manage RSS Feeds for {selectedClientName}</h3>
             <div className="rss-input-group">
               <input
                 type="url"
@@ -445,7 +614,7 @@ We highly recommend reviewing and implementing these actions promptly to minimiz
             </div>
             <ul className="rss-list">
               {rssFeeds.length === 0 ? (
-                <li className="no-rss-message">No RSS feeds subscribed yet.</li>
+                <li className="no-rss-message">No RSS feeds for this client.</li>
               ) : (
                 rssFeeds.map(feed => (
                   <li key={feed.id} className="rss-item">

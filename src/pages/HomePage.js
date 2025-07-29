@@ -316,6 +316,7 @@ function HomePage() {
 
   return (
     <div className="home-container">
+      
       <div className="effect-area">
         <canvas ref={canvasRef} className="particle-canvas" />
         <div className="package">
