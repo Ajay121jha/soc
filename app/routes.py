@@ -14,6 +14,7 @@ from datetime import datetime
 import requests
 import certifi
 import feedparser
+from flask_mail import Mail, Message
 
 
 
@@ -995,29 +996,39 @@ def setup_routes(app):
 
         if request.method == 'POST':
             data = request.get_json()
-            required_fields = [
-                "client_id", "client_name", "service_or_os", "update_type",
-                "description", "impact", "recommended_actions", "advisory_content"
-            ]
-            if not all(field in data and data[field] for field in required_fields):
-                return jsonify({"error": "Missing required fields"}), 400
+            # Expect a list of client IDs now
+            client_ids = data.get("client_ids") 
+            client_names = data.get("client_names") # Corresponding names
 
-            query = """
-            INSERT INTO advisories (
-                client_id, client_name, service_or_os, update_type,
-                description, impact, recommended_actions, advisory_content, timestamp
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """
-            values = (
-                data["client_id"], data["client_name"], data["service_or_os"],
-                data["update_type"], data["description"], data["impact"],
-                data["recommended_actions"], data["advisory_content"],
-                datetime.utcnow()
-            )
-            cursor.execute(query, values)
+            # ... other required fields
+            required_fields = [
+                "service_or_os", "update_type", "description", 
+                "impact", "recommended_actions", "advisory_content"
+            ]
+            if not all(field in data and data[field] for field in required_fields) or not client_ids:
+                return jsonify({"error": "Missing required fields or client_ids"}), 400
+
+            # Loop through each client and create an advisory
+            for i, client_id in enumerate(client_ids):
+                client_name = client_names[i]
+                query = """
+                INSERT INTO advisories (
+                    client_id, client_name, service_or_os, update_type,
+                    description, impact, recommended_actions, advisory_content, timestamp
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                # Note: You may want to slightly customize the advisory_content for each client
+                values = (
+                    client_id, client_name, data["service_or_os"],
+                    data["update_type"], data["description"], data["impact"],
+                    data["recommended_actions"], data["advisory_content"],
+                    datetime.utcnow()
+                )
+                cursor.execute(query, values)
+
             conn.commit()
             conn.close()
-            return jsonify({"message": "Advisory submitted successfully!"}), 201
+            return jsonify({"message": "Advisories submitted successfully!"}), 201
 
     @app.route('/api/advisories/delete', methods=['POST'])
     def delete_advisories():
@@ -1059,16 +1070,17 @@ def setup_routes(app):
         if request.method == 'POST':
             data = request.get_json()
             url = data.get("url")
-            client_id = data.get("client_id")
+            tech_stack_id = data.get("tech_stack_id") # Changed from client_id
 
-            if not url or not client_id:
-                return jsonify({"error": "RSS feed URL and client ID are required"}), 400
+            if not url or not tech_stack_id:
+                return jsonify({"error": "RSS feed URL and tech_stack_id are required"}), 400
 
-            cursor.execute("INSERT INTO rss_feeds (url, client_id) VALUES (%s, %s)", (url, client_id))
+            # Note the change in the INSERT statement
+            cursor.execute("INSERT INTO rss_feeds (url, tech_stack_id) VALUES (%s, %s)", (url, tech_stack_id))
             conn.commit()
             feed_id = cursor.lastrowid
             conn.close()
-            return jsonify({"id": feed_id, "url": url, "client_id": client_id}), 201
+            return jsonify({"id": feed_id, "url": url, "tech_stack_id": tech_stack_id}), 201
 
 
     @app.route('/api/rss-feeds/<int:id>', methods=['DELETE'])
@@ -1134,3 +1146,29 @@ def setup_routes(app):
                 print(f"Error fetching feed {url}: {e}")
 
         return jsonify(all_items)
+
+
+
+
+
+    @app.route("/api/tech-stacks", methods=["GET", "POST"])
+    def tech_stacks():
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        if request.method == "GET":
+            cursor.execute("SELECT * FROM tech_stacks")
+            stacks = cursor.fetchall()
+            conn.close()
+            return jsonify(stacks), 200
+
+        if request.method == "POST":
+            data = request.get_json()
+            name = data.get("name")
+            if not name:
+                return jsonify({"error": "Tech stack name is required"}), 400
+
+            cursor.execute("INSERT INTO tech_stacks (name) VALUES (%s)", (name,))
+            conn.commit()
+            conn.close()
+            return jsonify({"message": "Tech stack created"}), 201
