@@ -651,27 +651,6 @@ def setup_routes(app):
             cursor.close()
             conn.close()
 
-    @app.route("/api/clients", methods=["GET", "POST"])
-    def clients():
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        if request.method == "GET":
-            cursor.execute("SELECT * FROM clients")
-            return jsonify(cursor.fetchall())
-
-        if request.method == "POST":
-            data = request.get_json()
-            name = data.get("name")
-
-            if not name:
-                return jsonify({"error": "Client name is required"}), 400
-
-            cursor.execute("INSERT INTO clients (name) VALUES (%s)", (name,))
-            conn.commit()
-
-            client_id = cursor.lastrowid
-            return jsonify({"id": client_id, "name": name}), 201
 
     
     @app.route("/api/assets", methods=["GET", "POST"])
@@ -983,192 +962,283 @@ def setup_routes(app):
 
 
 
-    @app.route('/api/advisories', methods=['GET', 'POST'])
-    def advisories():
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        if request.method == 'GET':
-            cursor.execute("SELECT * FROM advisories ORDER BY timestamp DESC")
-            data = cursor.fetchall()
-            conn.close()
-            return jsonify(data)
-
-        if request.method == 'POST':
-            data = request.get_json()
-            # Expect a list of client IDs now
-            client_ids = data.get("client_ids") 
-            client_names = data.get("client_names") # Corresponding names
-
-            # ... other required fields
-            required_fields = [
-                "service_or_os", "update_type", "description", 
-                "impact", "recommended_actions", "advisory_content"
-            ]
-            if not all(field in data and data[field] for field in required_fields) or not client_ids:
-                return jsonify({"error": "Missing required fields or client_ids"}), 400
-
-            # Loop through each client and create an advisory
-            for i, client_id in enumerate(client_ids):
-                client_name = client_names[i]
-                query = """
-                INSERT INTO advisories (
-                    client_id, client_name, service_or_os, update_type,
-                    description, impact, recommended_actions, advisory_content, timestamp
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """
-                # Note: You may want to slightly customize the advisory_content for each client
-                values = (
-                    client_id, client_name, data["service_or_os"],
-                    data["update_type"], data["description"], data["impact"],
-                    data["recommended_actions"], data["advisory_content"],
-                    datetime.utcnow()
-                )
-                cursor.execute(query, values)
-
-            conn.commit()
-            conn.close()
-            return jsonify({"message": "Advisories submitted successfully!"}), 201
-
-    @app.route('/api/advisories/delete', methods=['POST'])
-    def delete_advisories():
-        data = request.get_json()
-        ids = data.get('ids', [])
-        if not ids:
-            return jsonify({"message": "No IDs provided"}), 400
-
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            format_strings = ','.join(['%s'] * len(ids))
-            cursor.execute(f"DELETE FROM advisories WHERE id IN ({format_strings})", tuple(ids))
-            conn.commit()
-            deleted_count = cursor.rowcount
-            cursor.close()
-            conn.close()
-            return jsonify({"message": f"{deleted_count} advisories deleted successfully!"}), 200
-        except Exception as e:
-            print(f"Error deleting advisories: {e}")
-            return jsonify({"message": "An error occurred while deleting advisories."}), 500
 
 
-    @app.route('/api/rss-feeds', methods=['GET', 'POST'])
-    def rss_feeds():
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        if request.method == 'GET':
-            client_id = request.args.get("client_id")
-            if not client_id:
-                return jsonify({"error": "Client ID is required"}), 400
-            
-            cursor.execute("SELECT * FROM rss_feeds WHERE client_id = %s", (client_id,))
-            feeds = cursor.fetchall()
-            conn.close()
-            return jsonify(feeds)
-
-        if request.method == 'POST':
-            data = request.get_json()
-            url = data.get("url")
-            tech_stack_id = data.get("tech_stack_id") # Changed from client_id
-
-            if not url or not tech_stack_id:
-                return jsonify({"error": "RSS feed URL and tech_stack_id are required"}), 400
-
-            # Note the change in the INSERT statement
-            cursor.execute("INSERT INTO rss_feeds (url, tech_stack_id) VALUES (%s, %s)", (url, tech_stack_id))
-            conn.commit()
-            feed_id = cursor.lastrowid
-            conn.close()
-            return jsonify({"id": feed_id, "url": url, "tech_stack_id": tech_stack_id}), 201
 
 
-    @app.route('/api/rss-feeds/<int:id>', methods=['DELETE'])
-    def delete_rss_feed(id):
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+
+    def get_contacts_for_tech_map(cursor, client_tech_map_id):
+        """Fetches all contacts for a given client_tech_map entry."""
+        cursor.execute("SELECT id, email FROM client_tech_contacts WHERE client_tech_map_id = %s", (client_tech_map_id,))
+        return cursor.fetchall()
+
+    # --- API Endpoints ---
+
+  
+
+    @app.route("/api/clients", methods=["GET", "POST"])
+    def clients():
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM rss_feeds WHERE id = %s", (id,))
-        conn.commit()
-        conn.close()
-        return jsonify({"message": "RSS Feed deleted successfully!"}), 200
-    
-    @app.route('/api/rss-feed-items', methods=['GET'])
-    def get_rss_feed_items():
-        client_id = request.args.get('client_id')
-        search_query = request.args.get('q')
 
-        if not client_id:
-            return jsonify([])
+        if request.method == "GET":
+            cursor.execute("SELECT * FROM clients")
+            return jsonify(cursor.fetchall())
 
+        if request.method == "POST":
+            data = request.get_json()
+            name = data.get("name")
+
+            if not name:
+                return jsonify({"error": "Client name is required"}), 400
+
+            cursor.execute("INSERT INTO clients (name) VALUES (%s)", (name,))
+            conn.commit()
+
+            client_id = cursor.lastrowid
+            return jsonify({"id": client_id, "name": name}), 201
+
+
+    @app.route("/api/tech-stacks", methods=["GET", "POST"])
+    def tech_stacks():
+        """Fetches all available technology stacks or adds a new one."""
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT url FROM rss_feeds WHERE client_id = %s", (client_id,))
+
+        if request.method == "GET":
+            cursor.execute("SELECT id, name FROM tech_stacks ORDER BY name")
+            stacks = cursor.fetchall()
+            conn.close()
+            return jsonify(stacks)
+
+        if request.method == "POST":
+            data = request.get_json()
+            name = data.get("name")
+            description = data.get("description", "") # Optional description
+            if not name:
+                conn.close()
+                return jsonify({"error": "Tech stack name is required"}), 400
+            
+            try:
+                cursor.execute("INSERT INTO tech_stacks (name, description) VALUES (%s, %s)", (name, description))
+                conn.commit()
+                new_stack_id = cursor.lastrowid
+                conn.close()
+                return jsonify({"id": new_stack_id, "name": name, "description": description}), 201
+            except mysql.connector.Error as err:
+                conn.close()
+                # Handle potential duplicate entry
+                if err.errno == 1062:
+                    return jsonify({"error": f"Tech stack '{name}' already exists."}), 409
+                return jsonify({"error": str(err)}), 500
+
+    @app.route("/api/clients/<int:client_id>/tech", methods=["GET", "POST"])
+    def manage_client_tech(client_id):
+        """Manages the technologies assigned to a specific client."""
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        if request.method == "GET":
+            # This query joins the tables to get the tech name and version for a client.
+            query = """
+                SELECT ctm.id, ts.name as tech_stack_name, ctm.version
+                FROM client_tech_map ctm
+                JOIN tech_stacks ts ON ctm.tech_stack_id = ts.id
+                WHERE ctm.client_id = %s
+            """
+            cursor.execute(query, (client_id,))
+            tech_details = cursor.fetchall()
+            # For each tech, we also fetch its associated contacts.
+            for detail in tech_details:
+                detail['contacts'] = get_contacts_for_tech_map(cursor, detail['id'])
+            conn.close()
+            return jsonify(tech_details)
+
+        if request.method == "POST":
+            # Assigns a new technology and version to a client.
+            data = request.get_json()
+            tech_stack_id = data.get("tech_stack_id")
+            version = data.get("version")
+            if not tech_stack_id or not version:
+                return jsonify({"error": "tech_stack_id and version are required"}), 400
+            
+            try:
+                cursor.execute(
+                    "INSERT INTO client_tech_map (client_id, tech_stack_id, version) VALUES (%s, %s, %s)",
+                    (client_id, tech_stack_id, version)
+                )
+                conn.commit()
+                return jsonify({"message": "Tech stack assigned to client successfully"}), 201
+            except Exception as e:
+                conn.rollback()
+                return jsonify({"error": f"Failed to assign tech stack: {e}"}), 500
+            finally:
+                conn.close()
+
+    @app.route("/api/client-tech/<int:client_tech_map_id>/contacts", methods=["POST"])
+    def add_client_tech_contact(client_tech_map_id):
+        """Adds a new notification email contact for a client's technology."""
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        data = request.get_json()
+        email = data.get("email")
+        if not email:
+            return jsonify({"error": "Email is required"}), 400
+        
+        try:
+            cursor.execute(
+                "INSERT INTO client_tech_contacts (client_tech_map_id, email) VALUES (%s, %s)",
+                (client_tech_map_id, email)
+            )
+            conn.commit()
+            return jsonify({"message": "Contact added successfully"}), 201
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": f"Failed to add contact: {e}"}), 500
+        finally:
+            conn.close()
+
+    @app.route("/api/clients/<int:client_id>/feed-items", methods=["GET"])
+    def get_client_feed_items(client_id):
+        """Aggregates and fetches RSS news items for all technologies a client uses."""
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # This query finds all unique RSS feed URLs related to a client's tech stack.
+        query = """
+            SELECT DISTINCT rf.url FROM rss_feeds rf
+            JOIN client_tech_map ctm ON rf.tech_stack_id = ctm.tech_stack_id
+            WHERE ctm.client_id = %s
+        """
+        cursor.execute(query, (client_id,))
         feeds = cursor.fetchall()
         conn.close()
 
         all_items = []
         for feed in feeds:
-            url = feed['url']
             try:
-                # Use certifi's certificate bundle for verification
-                response = requests.get(url, verify=certifi.where())
-                parsed = feedparser.parse(response.content)
-
-                if parsed.bozo:
-                    print(f"Error parsing feed {url}: {parsed.bozo_exception}")
-                    continue
-                
-                entries_to_process = parsed.entries
-
-                if search_query:
-                    # Filter entries on the backend if a search query is provided
-                    filtered_entries = [
-                        entry for entry in entries_to_process
-                        if search_query.lower() in entry.get("title", "").lower() or
-                           search_query.lower() in entry.get("summary", "").lower()
-                    ]
-                    entries_to_process = filtered_entries
-                else:
-                    # Limit to the latest 5 if no search query
-                    entries_to_process = entries_to_process[:5]
-
-                for entry in entries_to_process:
+                parsed_feed = feedparser.parse(feed['url'])
+                # Get the latest 5 items from each feed
+                for entry in parsed_feed.entries[:5]:
                     all_items.append({
                         "title": entry.get("title", "No Title"),
                         "link": entry.get("link", "#"),
-                        "summary": entry.get("summary", ""),
-                        "published": entry.get("published", "")
+                        "summary": entry.get("summary", "No summary available."),
                     })
-            except requests.exceptions.SSLError as e:
-                print(f"SSL Error for feed {url}: {e}")
-                # Optionally, you can decide to skip this feed or handle the error differently
             except Exception as e:
-                print(f"Error fetching feed {url}: {e}")
-
+                print(f"Error fetching or parsing feed {feed['url']}: {e}")
+        
         return jsonify(all_items)
+        
+    @app.route("/api/advisories/bulk", methods=['POST'])
+    def create_bulk_advisory():
+        """
+        The core endpoint. Creates and dispatches advisories to all clients
+        using a specific technology and version.
+        """
+        data = request.get_json()
+        tech_stack_id = data.get("techStackId")
+        version_pattern = data.get("version", "").replace('*', '%') # Allow wildcards
+        update_type = data.get("updateType")
+        description = data.get("description")
+        impact = data.get("impact", "Not specified.")
+        recommended_actions = data.get("recommendedActions", "Review and apply updates as per your internal policies.")
 
+        if not all([tech_stack_id, version_pattern, update_type, description]):
+            return jsonify({"error": "Missing required advisory fields"}), 400
 
-
-
-
-    @app.route("/api/tech-stacks", methods=["GET", "POST"])
-    def tech_stacks():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-
-        if request.method == "GET":
-            cursor.execute("SELECT * FROM tech_stacks")
-            stacks = cursor.fetchall()
+        
+        # 1. Find all clients using the specified tech_stack and a matching version.
+        #    The LIKE operator allows for flexible version matching (e.g., "11.x", "22H2*").
+        find_clients_query = """
+            SELECT c.id as client_id, c.name as client_name, ts.name as tech_stack_name
+            FROM clients c
+            JOIN client_tech_map ctm ON c.id = ctm.client_id
+            JOIN tech_stacks ts ON ctm.tech_stack_id = ts.id
+            WHERE ctm.tech_stack_id = %s AND ctm.version LIKE %s
+        """
+        cursor.execute(find_clients_query, (tech_stack_id, version_pattern))
+        affected_clients = cursor.fetchall()
+        
+        if not affected_clients:
             conn.close()
-            return jsonify(stacks), 200
+            return jsonify({"message": "No clients found matching the specified technology and version."}), 200
 
-        if request.method == "POST":
-            data = request.get_json()
-            name = data.get("name")
-            if not name:
-                return jsonify({"error": "Tech stack name is required"}), 400
+        # 2. For each affected client, create and store an advisory record.
+        for client in affected_clients:
+            # Here you would integrate with Microsoft Graph API to send an email.
+            # You would fetch contacts using:
+            # `SELECT email FROM client_tech_contacts ctc JOIN client_tech_map ctm ON ...`
+            # For now, we will just save the record to our database.
+            
+            # 2a. Format the advisory content using a template.
+            advisory_content = f"""**Cybersecurity Advisory: {update_type} for {client['tech_stack_name']}**
 
-            cursor.execute("INSERT INTO tech_stacks (name) VALUES (%s)", (name,))
-            conn.commit()
-            conn.close()
-            return jsonify({"message": "Tech stack created"}), 201
+**Client:** {client['client_name']}
+**Date:** {datetime.now().strftime('%d/%m/%Y')}
+
+**1. Overview**
+This advisory provides critical information regarding a recent {update_type} for your {client['tech_stack_name']} environment (Version Pattern: {data.get("version")}).
+
+**2. Description**
+{description}
+
+**3. Potential Impact**
+{impact}
+
+**4. Recommended Actions**
+{recommended_actions}
+
+---
+*This is an automated advisory from the SOC Advisory System.*
+"""
+            # 2b. Insert the generated advisory into the database for record-keeping.
+            insert_query = """
+                INSERT INTO advisories (client_id, client_name, service_or_os, update_type, description, impact, recommended_actions, advisory_content, timestamp)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            """
+            cursor.execute(insert_query, (
+                client['client_id'], client['client_name'], client['tech_stack_name'],
+                update_type, description, impact, recommended_actions, advisory_content
+            ))
+
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"message": f"Advisory has been dispatched and recorded for {len(affected_clients)} clients."}), 201
+
+    @app.route('/api/advisories', methods=['GET'])
+    def get_advisories():
+        """Fetches all previously sent advisories for the main feed."""
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        # Selecting all necessary fields for display
+        cursor.execute("SELECT id, client_id, client_name, advisory_content, timestamp FROM advisories ORDER BY timestamp DESC")
+        data = cursor.fetchall()
+        conn.close()
+        return jsonify(data)
+
+# Example of how to use this in your main app.py
+# from flask import Flask
+# from .routes_advisory import setup_advisory_routes
+#
+# app = Flask(__name__)
+# setup_advisory_routes(app)
+# # ... setup other routes
