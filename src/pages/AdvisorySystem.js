@@ -1,634 +1,550 @@
-import React, { useEffect, useState } from 'react';
-import { Briefcase, Info, AlertTriangle, Lightbulb, User, Calendar, Search, Plus, Send, Rss, Trash2 } from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Briefcase, Calendar, Search, Send, Layers, Settings, X, PlusCircle, Mail, Tags } from 'lucide-react';
+// It's good practice to have a separate CSS file for component-specific styles.
 import "../styles/Advisory.css";
 
-// Helper function to strip HTML tags and images
+// Helper function to strip HTML tags from RSS descriptions for cleaner display
 const stripHtml = (html) => {
   if (!html) return '';
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  // Also remove images which can be large and disruptive
   doc.querySelectorAll('img').forEach(img => img.remove());
   return doc.body.textContent || "";
 };
 
 export default function AdvisorySystem() {
+  // --- Core Data State ---
   const [clients, setClients] = useState([]);
-  const [selectedClient, setSelectedClient] = useState('');
+  const [techStacks, setTechStacks] = useState([]);
   const [advisories, setAdvisories] = useState([]);
-  const [newAdvisory, setNewAdvisory] = useState({
-    serviceOrOS: '',
-    updateType: '',
-    description: '',
-    impact: '',
-    recommendedActions: '',
-    advisoryContent: '',
-  });
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const [rssFeeds, setRssFeeds] = useState([]);
-  const [newRssFeedUrl, setNewRssFeedUrl] = useState('');
-  const [showRssModal, setShowRssModal] = useState(false);
+  // --- UI and Filtering State ---
+  const [selectedClientId, setSelectedClientId] = useState('');
+  const [clientSearchTerm, setClientSearchTerm] = useState('');
+
+  // --- Advisory Creation Form State ---
+  const [newAdvisory, setNewAdvisory] = useState({
+    techStackId: '', version: '', updateType: '', description: '', impact: '', recommendedActions: ''
+  });
+
+  // --- RSS Feed State ---
   const [rssItems, setRssItems] = useState([]);
-  const [rssSearchTerm, setRssSearchTerm] = useState('');
   const [isRssLoading, setIsRssLoading] = useState(false);
 
-  const [isDeleteMode, setIsDeleteMode] = useState(false);
-  const [selectedAdvisories, setSelectedAdvisories] = useState([]);
+  // --- Client Configuration Modal State ---
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [configuringClient, setConfiguringClient] = useState(null);
+  const [clientTechDetails, setClientTechDetails] = useState([]);
+  const [newTechStackId, setNewTechStackId] = useState('');
+  const [newVersion, setNewVersion] = useState('');
+  const [newContactEmail, setNewContactEmail] = useState('');
 
-  const [doubleClickedAdvisoryId, setDoubleClickedAdvisoryId] = useState(null);
+  // --- Tech Stack Management Modal State ---
+  const [showTechModal, setShowTechModal] = useState(false);
+  const [newTechName, setNewTechName] = useState('');
 
-  
-  const extractSection = (content, sectionTitle) => {
-    const regex = new RegExp(`\\*\\*${sectionTitle}\\*\\*\\s*([\\s\\S]*?)(?=\\*\\*|$)`, 'i');
-    const match = content.match(regex);
-    return match ? match[1].trim() : '';
-  };
+  // --- Data Fetching ---
+  const fetchAdvisories = useCallback(async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/advisories');
+      setAdvisories(await response.json());
+    } catch (error) {
+      console.error("Error fetching advisories:", error);
+    }
+  }, []);
 
 
 
-  useEffect(() => {
-    const fetchClients = async () => {
-      try {
-        const response = await fetch('http://localhost:5000/api/clients');
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        const formattedClients = data.map(clientArray => ({ id: clientArray[0], name: clientArray[1] }));
-        setClients(formattedClients);
-      } catch (error) {
-        console.error("Error fetching clients from backend:", error);
-      }
-    };
 
-    fetchClients();
+  const [rssFeeds, setRssFeeds] = useState([]);
+  const [newRssUrl, setNewRssUrl] = useState('');
+  const [selectedTechStackId, setSelectedTechStackId] = useState('');
+
+
+
+
+
+
+  const fetchTechStacks = useCallback(async () => {
+    try {
+      const res = await fetch('http://localhost:5000/api/tech-stacks');
+      setTechStacks(await res.json());
+    } catch (error) {
+      console.error("Error fetching tech stacks:", error);
+    }
   }, []);
 
   useEffect(() => {
-    const fetchAdvisories = async () => {
+    const fetchInitialData = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch('http://localhost:5000/api/advisories');
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        setAdvisories(data);
+        await Promise.all([
+          (async () => {
+            const res = await fetch('http://localhost:5000/api/clients');
+            const data = await res.json();
+            setClients(data.map(c => ({ id: c[0], name: c[1] })));
+          })(),
+          fetchTechStacks(),
+          fetchAdvisories()
+        ]);
       } catch (error) {
-        console.error("Error fetching advisories from backend:", error);
+        console.error("Error fetching initial data:", error);
       } finally {
         setIsLoading(false);
       }
     };
+    fetchInitialData();
+  }, [fetchAdvisories, fetchTechStacks]);
 
-    fetchAdvisories();
-  }, []);
-
-  // Fetch RSS feeds when a client is selected
   useEffect(() => {
-    const fetchRssFeeds = async () => {
-      if (!selectedClient) {
-        setRssFeeds([]);
-        return;
-      }
-      try {
-        const response = await fetch(`http://localhost:5000/api/rss-feeds?client_id=${selectedClient}`);
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        setRssFeeds(data);
-      } catch (error) {
-        console.error("Error fetching RSS feeds:", error);
-        setRssFeeds([]);
-      }
-    };
-    fetchRssFeeds();
-  }, [selectedClient]);
-
-  // Fetch initial RSS items when a client is selected
-  useEffect(() => {
-    const fetchInitialRssItems = async () => {
-      if (!selectedClient) {
+    const fetchRssItems = async () => {
+      if (!selectedClientId) {
         setRssItems([]);
         return;
       }
       setIsRssLoading(true);
       try {
-        const response = await fetch(`http://localhost:5000/api/rss-feed-items?client_id=${selectedClient}`);
+        const response = await fetch(`http://localhost:5000/api/clients/${selectedClientId}/feed-items`);
         const data = await response.json();
-        const processedItems = data.map(item => ({
-          ...item,
-          summary: stripHtml(item.summary)
-        }));
-        setRssItems(processedItems);
+        setRssItems(Array.isArray(data) ? data.map(item => ({ ...item, summary: stripHtml(item.summary) })) : []);
       } catch (error) {
-        console.error("Error fetching initial RSS items:", error);
+        console.error("Error fetching RSS items:", error);
         setRssItems([]);
       } finally {
         setIsRssLoading(false);
       }
     };
-    fetchInitialRssItems();
-  }, [selectedClient]);
+    fetchRssItems();
+  }, [selectedClientId]);
 
+  // --- Handlers for Modals ---
+  const openClientConfigModal = useCallback(async (client) => {
+    setConfiguringClient(client);
+    setShowConfigModal(true);
+    try {
+      const response = await fetch(`http://localhost:5000/api/clients/${client.id}/tech`);
+      const data = await response.json();
+      setClientTechDetails(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Failed to fetch client tech details", error);
+      setClientTechDetails([]);
+    }
+  }, []);
+
+  const handleAddClientTechVersion = async () => {
+    if (!newTechStackId || !newVersion.trim()) {
+      alert('Please select a tech stack and enter a version.');
+      return;
+    }
+    try {
+      await fetch(`http://localhost:5000/api/clients/${configuringClient.id}/tech`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tech_stack_id: newTechStackId, version: newVersion }),
+      });
+      setNewVersion('');
+      setNewTechStackId('');
+      openClientConfigModal(configuringClient);
+    } catch (error) {
+      console.error("Failed to add tech version:", error);
+    }
+  };
+
+  const handleAddContact = async (clientTechMapId) => {
+    if (!newContactEmail.trim() || !newContactEmail.includes('@')) {
+      alert('Please enter a valid email address.');
+      return;
+    }
+    try {
+      await fetch(`http://localhost:5000/api/client-tech/${clientTechMapId}/contacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: newContactEmail }),
+      });
+      setNewContactEmail('');
+      openClientConfigModal(configuringClient);
+    } catch (error) {
+      console.error("Failed to add contact:", error);
+    }
+  };
+
+  const handleAddNewTechStack = async (e) => {
+    e.preventDefault();
+    if (!newTechName.trim()) {
+      alert('Please enter a name for the new tech stack.');
+      return;
+    }
+    try {
+      const response = await fetch('http://localhost:5000/api/tech-stacks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newTechName }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to add tech stack');
+      }
+      setNewTechName('');
+      fetchTechStacks(); // Refresh the list of tech stacks
+      alert(`Successfully added '${result.name}'`);
+    } catch (error) {
+      console.error("Error adding new tech stack:", error);
+      alert(error.message);
+    }
+  };
+
+  // --- Advisory and Form Handlers ---
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setNewAdvisory(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleRssUrlChange = (e) => {
-    setNewRssFeedUrl(e.target.value);
-  };
-
-  const handleRssSearch = async () => {
-    if (!selectedClient) return;
-    setIsRssLoading(true);
-    try {
-      const response = await fetch(`http://localhost:5000/api/rss-feed-items?client_id=${selectedClient}&q=${rssSearchTerm}`);
-      const data = await response.json();
-      const processedItems = data.map(item => ({
-        ...item,
-        summary: stripHtml(item.summary)
-      }));
-      setRssItems(processedItems);
-    } catch (error) {
-      console.error("Error searching RSS items:", error);
-      setRssItems([]);
-    } finally {
-      setIsRssLoading(false);
-    }
-  };
-
-  const handleAddRssFeed = async () => {
-    if (!newRssFeedUrl.trim()) {
-      alert('Please enter a valid RSS feed URL.');
-      return;
-    }
-    if (!selectedClient) {
-      alert('Please select a client first.');
-      return;
-    }
-    try {
-      const response = await fetch('http://localhost:5000/api/rss-feeds', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: newRssFeedUrl, client_id: selectedClient }),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const newFeed = await response.json();
-      setRssFeeds(prev => [...prev, newFeed]);
-      setNewRssFeedUrl('');
-      alert('RSS Feed added successfully!');
-    } catch (error) {
-      console.error("Error adding RSS feed:", error);
-      alert('Failed to add RSS feed. Please check the URL and backend.');
-    }
-  };
-
-  const handleDeleteRssFeed = async (id) => {
-    try {
-      const response = await fetch(`http://localhost:5000/api/rss-feeds/${id}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      setRssFeeds(prev => prev.filter(feed => feed.id !== id));
-      alert('RSS Feed deleted successfully!');
-    } catch (error) {
-      console.error("Error deleting RSS feed:", error);
-      alert('Failed to delete RSS feed.');
-    }
-  };
-
-
-
-
-  const handleDoubleClickAdvisory = (id) => {
-    setDoubleClickedAdvisoryId(prevId => prevId === id ? null : id);
-  };
-
-
-
-
-
-
-
-
   const handleSubmitAdvisory = async (e) => {
     e.preventDefault();
-    if (!selectedClient) {
-      alert('Please select a client before submitting an advisory.');
+    const { techStackId, version, updateType, description } = newAdvisory;
+    if (!techStackId || !version || !updateType || !description) {
+      alert("Please fill out all required fields for the advisory.");
       return;
     }
-
-    const clientName = clients.find(c => c.id === Number(selectedClient))?.name;
-
-    if (!clientName) {
-      alert('Selected client not found. Please try again.');
-      return;
-    }
-
     setIsLoading(true);
-
-    const advisoryContent = `**Cybersecurity Advisory: ${newAdvisory.updateType} for ${newAdvisory.serviceOrOS}**
-
-**Client:** ${clientName}
-**Date:** ${new Date().toLocaleDateString()}
-
-**1. Overview**
-This advisory provides critical information regarding a recent ${newAdvisory.updateType} for your ${newAdvisory.serviceOrOS} environment. Staying updated is crucial for maintaining a robust security posture.
-
-**2. Description of Update/Change**
-${newAdvisory.description}
-
-**3. Potential Impact**
-${newAdvisory.impact}
-
-**4. Recommended Actions**
-${newAdvisory.recommendedActions}
-
-We highly recommend reviewing and implementing these actions promptly to minimize potential risks. For any questions or assistance, please contact our Security Operations Center.
-
----
-*This advisory was manually created based on gathered intelligence.*
-`;
-
     try {
-      const response = await fetch('http://localhost:5000/api/advisories', {
+      const response = await fetch('http://localhost:5000/api/advisories/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_id: selectedClient,
-          client_name: clientName,
-          service_or_os: newAdvisory.serviceOrOS,
-          update_type: newAdvisory.updateType,
-          description: newAdvisory.description,
-          impact: newAdvisory.impact,
-          recommended_actions: newAdvisory.recommendedActions,
-          advisory_content: advisoryContent,
-          timestamp: new Date().toISOString(),
-        }),
+        body: JSON.stringify(newAdvisory),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to submit bulk advisory');
 
-      const updatedResponse = await fetch('http://localhost:5000/api/advisories');
-      const updatedData = await updatedResponse.json();
-      setAdvisories(updatedData);
-
-      setNewAdvisory({
-        serviceOrOS: '',
-        updateType: '',
-        description: '',
-        impact: '',
-        recommendedActions: '',
-        advisoryContent: '',
-      });
-      alert('Advisory submitted successfully!');
+      await fetchAdvisories();
+      alert(result.message);
+      setNewAdvisory({ techStackId: '', version: '', updateType: '', description: '', impact: '', recommendedActions: '' });
     } catch (error) {
-      console.error("Error adding advisory to backend:", error);
-      alert('Failed to submit advisory. Please check your backend.');
+      console.error("Error submitting bulk advisory:", error);
+      alert(error.message);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // --- Filtering and Derived State ---
   const filteredAdvisories = advisories.filter(advisory =>
-    (selectedClient === '' || advisory.client_id === Number(selectedClient)) &&
-    (searchTerm === '' ||
-      advisory.client_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      advisory.service_or_os.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      advisory.update_type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      advisory.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      advisory.advisory_content.toLowerCase().includes(searchTerm.toLowerCase()))
-  ).sort((a, b) => {
-    const dateA = new Date(a.timestamp || 0);
-    const dateB = new Date(b.timestamp || 0);
-    return dateB - dateA;
-  });
+    (selectedClientId === '' || advisory.client_id === Number(selectedClientId))
+  );
+  const filteredClients = clients.filter(client =>
+    client.name.toLowerCase().includes(clientSearchTerm.toLowerCase())
+  );
+  const selectedClientName = clients.find(c => c.id === Number(selectedClientId))?.name || '';
 
-  const handleSelectAdvisory = (id) => {
-    setSelectedAdvisories(prevSelected => {
-      if (prevSelected.includes(id)) {
-        return prevSelected.filter(advisoryId => advisoryId !== id);
-      } else {
-        return [...prevSelected, id];
-      }
+
+  
+const fetchRssFeeds = async (techStackId) => {
+  try {
+    const res = await fetch(`http://localhost:5000/api/rss-feeds?techStackId=${techStackId}`);
+    const data = await res.json();
+    setRssFeeds(data);
+  } catch (error) {
+    console.error("Error fetching RSS feeds:", error);
+  }
+};
+
+
+
+
+const handleAddRssFeed = async () => {
+  if (!selectedTechStackId || !newRssUrl.trim()) {
+    alert("Please select a tech stack and enter a valid RSS URL.");
+    return;
+  }
+  try {
+    const res = await fetch('http://localhost:5000/api/rss-feeds', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tech_stack_id: selectedTechStackId, url: newRssUrl })
     });
-  };
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || "Failed to add RSS feed");
+    setNewRssUrl('');
+    fetchRssFeeds(selectedTechStackId);
+    alert("RSS feed added successfully!");
+  } catch (error) {
+    console.error("Error adding RSS feed:", error);
+    alert(error.message);
+  }
+};
 
-  const handleDeleteAdvisories = async () => {
-    if (selectedAdvisories.length === 0) {
-      alert("Please select at least one advisory to delete.");
-      return;
-    }
 
-    if (window.confirm(`Are you sure you want to delete ${selectedAdvisories.length} selected advisory/advisories?`)) {
-      try {
-        const response = await fetch('http://localhost:5000/api/advisories/delete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: selectedAdvisories }),
-        });
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-        }
 
-        setAdvisories(prev => prev.filter(advisory => !selectedAdvisories.includes(advisory.id)));
-        setIsDeleteMode(false);
-        setSelectedAdvisories([]);
-        alert('Advisories deleted successfully!');
-      } catch (error) {
-        console.error("Error deleting advisories:", error);
-        alert(`Failed to delete advisories: ${error.message}`);
-      }
-    }
-  };
-
-  const selectedClientName = clients.find(c => c.id === Number(selectedClient))?.name || '';
 
   return (
-    <div className="flex min-h-screen bg-gray-100 font-inter">
+    <div className="flex h-screen bg-gray-100 font-inter text-gray-800">
       {/* Sidebar */}
-      <div className="w-64 bg-white p-6 shadow-md flex flex-col">
-        <h2 className="text-xl font-semibold text-gray-800 mb-6">Clients</h2>
-        <div className="relative mb-4">
+      <aside className="w-80 bg-white p-5 shadow-lg flex flex-col">
+        <h2 className="text-2xl font-bold text-gray-800 mb-4">SOC Advisory System</h2>
+
+        <h3 className="text-lg font-semibold text-gray-700 mb-2">Clients</h3>
+        <div className="relative mb-3">
           <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
           <input
             type="text"
             placeholder="Search clients..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            onChange={(e) => setSearchTerm(e.target.value)}
+            value={clientSearchTerm}
+            onChange={(e) => setClientSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
           />
         </div>
-        <select
-          className="w-full p-2 border border-gray-300 rounded-lg mb-4 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          value={selectedClient}
-          onChange={(e) => setSelectedClient(e.target.value)}
-        >
-          <option value="">Select a Client</option>
-          {clients.map(client => (
-            <option key={client.id} value={client.id}>{client.name}</option>
+
+        <div className="flex-grow overflow-y-auto border rounded-lg p-2 mb-4 bg-gray-50">
+          {filteredClients.map(client => (
+            <div
+              key={client.id}
+              className={`client-list-item ${selectedClientId === client.id ? 'selected' : ''}`}
+              onClick={() => setSelectedClientId(client.id)}
+            >
+              <span className="client-name">{client.name}</span>
+              <button onClick={(e) => { e.stopPropagation(); openClientConfigModal(client); }} className="client-config-button" title={`Configure ${client.name}`}>
+                <Settings size={16} />
+              </button>
+            </div>
           ))}
-        </select>
+        </div>
 
-        <h3 className="text-lg font-medium text-gray-700 mb-4 mt-6">Create New Advisory</h3>
-        <form onSubmit={handleSubmitAdvisory} className="space-y-4">
-          <input
-            type="text"
-            name="serviceOrOS"
-            placeholder="Service/OS Affected (e.g., Windows Server 2019)"
-            value={newAdvisory.serviceOrOS}
-            onChange={handleInputChange}
-            required
-            className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <select
-            name="updateType"
-            value={newAdvisory.updateType}
-            onChange={handleInputChange}
-            required
-            className="w-full p-2 border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select Update Type</option>
-            <option value="Security Patch">Security Patch</option>
-            <option value="Vulnerability Alert">Vulnerability Alert</option>
-            <option value="Feature Update">Feature Update</option>
-            <option value="Configuration Change">Configuration Change</option>
-            <option value="Advisory">General Advisory</option>
-          </select>
-          <textarea
-            name="description"
-            placeholder="Description of the update/change"
-            value={newAdvisory.description}
-            onChange={handleInputChange}
-            rows="3"
-            required
-            className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          ></textarea>
-          <textarea
-            name="impact"
-            placeholder="Potential Impact on client"
-            value={newAdvisory.impact}
-            onChange={handleInputChange}
-            rows="2"
-            required
-            className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          ></textarea>
-          <textarea
-            name="recommendedActions"
-            placeholder="Recommended Actions for client"
-            value={newAdvisory.recommendedActions}
-            onChange={handleInputChange}
-            rows="3"
-            required
-            className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          ></textarea>
-          <button
-            type="submit"
-            className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-200 flex items-center justify-center gap-2"
-            disabled={!selectedClient || isLoading}
-          >
-            <Send size={18} /> Submit Advisory
+        <div className="border-t pt-4">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-lg font-semibold text-gray-700">Create Bulk Advisory</h3>
+            <button onClick={() => setShowTechModal(true)} className="secondary-button !py-1" title="Manage Tech Stacks">
+              <Tags size={16} /> Manage Tech
+            </button>
+          </div>
+          <form onSubmit={handleSubmitAdvisory} className="space-y-3">
+            <select name="techStackId" value={newAdvisory.techStackId} onChange={handleInputChange} required className="form-input">
+              <option value="">-- Select Tech Stack --</option>
+              {techStacks.map(stack => <option key={stack.id} value={stack.id}>{stack.name}</option>)}
+            </select>
+            <input type="text" name="version" placeholder="Version (e.g., 22H2, 11.x, *)" value={newAdvisory.version} onChange={handleInputChange} required className="form-input" />
+            <select name="updateType" value={newAdvisory.updateType} onChange={handleInputChange} required className="form-input">
+              <option value="">-- Select Update Type --</option>
+              <option value="Security Patch">Security Patch</option>
+              <option value="Vulnerability Alert">Vulnerability Alert</option>
+              <option value="Informational">Informational</option>
+            </select>
+            <textarea name="description" placeholder="Description..." value={newAdvisory.description} onChange={handleInputChange} rows="3" required className="form-input"></textarea>
+            <textarea name="impact" placeholder="Potential Impact..." value={newAdvisory.impact} onChange={handleInputChange} rows="2" className="form-input"></textarea>
+            <textarea name="recommendedActions" placeholder="Recommended Actions..." value={newAdvisory.recommendedActions} onChange={handleInputChange} rows="3" className="form-input"></textarea>
+            <button type="submit" className="submit-button" disabled={isLoading}>
+              <Send size={18} className="inline-block mr-2" /> Dispatch to All Affected
+            </button>
+          </form>
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <main className="flex-1 p-6 overflow-y-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-gray-900">
+            {selectedClientName ? `Advisories for ${selectedClientName}` : "All Dispatched Advisories"}
+          </h1>
+          <button onClick={() => setSelectedClientId('')} className="secondary-button">
+            <Layers size={18} /> Show All
           </button>
-        </form>
+        </div>
+        {isLoading && <p>Loading advisories...</p>}
+        {!isLoading && filteredAdvisories.length === 0 && <p className="text-gray-500 italic text-center mt-8">{selectedClientId ? 'No advisories found for this client.' : 'No advisories have been dispatched yet.'}</p>}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
+          {filteredAdvisories.map(advisory => (
+            <div key={advisory.id} className="advisory-card">
+              <div className="flex items-center mb-3">
+                <Briefcase size={20} className="text-blue-600 mr-3" />
+                <h2 className="text-xl font-semibold text-gray-800">{advisory.client_name}</h2>
+              </div>
+              <p className="text-sm text-gray-500 mb-4 flex items-center gap-2">
+                <Calendar size={14} />{advisory.timestamp ? new Date(advisory.timestamp).toLocaleString() : 'N/A'}
+              </p>
+              <div className="prose" style={{ whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: advisory.advisory_content }} />
+            </div>
+          ))}
+        </div>
+      </main>
 
-        <button
-          onClick={() => setShowRssModal(true)}
-          className="mt-6 w-full bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300 transition duration-200 flex items-center justify-center gap-2"
-          disabled={!selectedClient}
-        >
-          <Rss size={18} /> Manage RSS Feeds
-        </button>
-      </div>
+      {/* Right Sidebar for RSS Feeds */}
+      <aside className="w-96 bg-white p-5 border-l border-gray-200 overflow-y-auto">
+        <h2 className="text-2xl font-bold text-gray-800 mb-4">
+          Latest News {selectedClientName && `for ${selectedClientName}`}
+        </h2>
+        {isRssLoading ? <p>Loading news...</p> :
+          rssItems.length === 0 ? <p className="text-gray-500 italic">{selectedClientId ? "No news available for this client's tech stack." : "Select a client to view relevant news."}</p> : (
+            <ul className="space-y-4">
+              {rssItems.map((item, index) => (
+                <li key={index} className="rss-item-card">
+                  <a href={item.link} target="_blank" rel="noopener noreferrer" className="rss-item-title">{item.title}</a>
+                  <p className="rss-item-summary">{item.summary}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+      </aside>
 
-      {/* Conditional Rendering for Main Content */}
-      {selectedClient ? (
-        <>
-          {/* Main Content Area */}
-          <div className="flex-1 p-8 overflow-y-auto">
-            <div className="flex justify-between items-center mb-8">
-              <h1 className="text-3xl font-bold text-gray-900">Client Advisories</h1>
-              {!isDeleteMode ? (
-                <div className='btn'>
-                  
-                <button
-                  onClick={() => setIsDeleteMode(true)}
-                  className="delete-advisory-button"
-                >
-                  <Trash2 size={13} /> Delete
-                </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-4">
-                  <div className='btn'>
-                  <button
-                    onClick={handleDeleteAdvisories}
-                    className="confirm-delete-button"
-                    disabled={selectedAdvisories.length === 0}
-                  >
-                    Delete Selected ({selectedAdvisories.length})
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsDeleteMode(false);
-                      setSelectedAdvisories([]);
-                    }}
-                    className="cancel-delete-button"
-                  >
-                    Cancel
-                  </button>
-                  </div>
-                </div>
-              )}
+      {/* Client Configuration Modal */}
+      {showConfigModal && configuringClient && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            {/* Header */}
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="modal-title">Configure Tech for: {configuringClient.name}</h3>
+              <button onClick={() => setShowConfigModal(false)} className="modal-close-icon">
+                <X size={24} />
+              </button>
             </div>
 
-            {isLoading ? (
-              <div className="bg-white p-6 rounded-lg shadow-md text-center text-gray-600 flex items-center justify-center gap-2">
-                <svg className="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <p>Loading advisories...</p>
-              </div>
-            ) : filteredAdvisories.length === 0 ? (
-              <div className="bg-white p-6 rounded-lg shadow-md text-center text-gray-600">
-                <p>No advisories found for this client.</p>
-                <p className="mt-2">Use the form on the left to create a new advisory.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
-                {filteredAdvisories.map(advisory => (
-                  <div
-                    key={advisory.id}
-                    className={`advisory-card bg-white p-6 rounded-lg shadow-md border border-gray-200 ${isDeleteMode ? 'is-deleting' : ''} ${selectedAdvisories.includes(advisory.id) ? 'selected' : ''}`}
-                    onClick={() => isDeleteMode && handleSelectAdvisory(advisory.id)}
-                  >
-
-                    {doubleClickedAdvisoryId === advisory.id && (
-                      <button
-                        className="delete-advisory-button"
-                        onClick={() => {
-                          setSelectedAdvisories([advisory.id]);
-                          setIsDeleteMode(true);
-                        }}
-                      >
-                        <Trash2 size={13} /> Delete
-                      </button>
-                    )}
-
-
-                    {isDeleteMode && (
-                      <input
-                        type="checkbox"
-                        className="advisory-checkbox"
-                        checked={selectedAdvisories.includes(advisory.id)}
-                        readOnly
-                      />
-                    )}
-                    <div className="flex items-center mb-4">
-                      <Briefcase size={20} className="text-blue-600 mr-2" />
-                      <h2 className="text-xl font-semibold text-gray-800">{advisory.client_name}</h2>
+            {/* Assigned Technologies */}
+            <section>
+              <h4 className="font-semibold text-gray-700 mb-2">Assigned Technologies</h4>
+              <div className="space-y-3 max-h-72 overflow-y-auto pr-2 border rounded-md p-4 bg-gray-50">
+                {clientTechDetails.length > 0 ? (
+                  clientTechDetails.map((tech) => (
+                    <div key={tech.id} className="config-item-card">
+                      <h4 className="config-item-title">
+                        {tech.tech_stack_name} (Version: {tech.version})
+                      </h4>
+                      <div className="mt-2">
+                        <h5 className="config-item-subtitle flex items-center gap-2">
+                          <Mail size={14} /> Notification Contacts:
+                        </h5>
+                        {tech.contacts.length > 0 ? (
+                          <ul className="list-disc list-inside pl-4 text-sm text-gray-600 mt-1">
+                            {tech.contacts.map((contact) => (
+                              <li key={contact.id}>{contact.email}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-xs text-gray-500 italic mt-1">No contacts assigned.</p>
+                        )}
+                        <div className="flex gap-2 mt-2">
+                          <input
+                            type="email"
+                            placeholder="new.contact@email.com"
+                            onBlur={(e) => setNewContactEmail(e.target.value)}
+                            className="rss-input text-sm flex-grow"
+                          />
+                          <button onClick={() => handleAddContact(tech.id)} className="add-rss-button text-sm">
+                            Add
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-sm text-gray-500 mb-4 flex items-center gap-1">
-                      <Calendar size={14} />
-                      {advisory.timestamp ? new Date(advisory.timestamp).toLocaleString() : 'N/A'}
-                    </p>
-                    <div className="prose max-w-none text-gray-700" dangerouslySetInnerHTML={{ __html: advisory.advisory_content.replace(/\n/g, '<br/>') }} />
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500 italic text-center p-4">No technologies assigned yet.</p>
+                )}
               </div>
-            )}
-          </div>
+            </section>
 
-          {/* Latest Cybersecurity News Section */}
-          <div className="w-96 bg-white p-6 border-l border-gray-200 overflow-y-auto">
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">
-              Latest Feed {selectedClientName && `for ${selectedClientName}`}
-            </h2>
-            <div className="flex gap-2 mb-4">
-              <input
-                type="text"
-                placeholder="Search news..."
-                className="w-full pl-4 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={rssSearchTerm}
-                onChange={(e) => setRssSearchTerm(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleRssSearch()}
-              />
-              <button1 onClick={handleRssSearch} className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                <Search size={18} />
-              </button1>
-            </div>
-            {isRssLoading ? (
-              <p className="text-gray-600">Searching...</p>
-            ) : rssItems.length === 0 ? (
-              <p className="text-gray-600">{selectedClient ? "No news available for this client or search term." : "Please select a client to see news."}</p>
-            ) : (
-              <ul className="space-y-4">
-                {rssItems.map((item, index) => (
-                  <li key={index} className="bg-white p-4 rounded-lg shadow-md border">
-                    <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-blue-600 font-semibold">
-                      {item.title}
-                    </a>
-                    <p className="text-gray-700 mt-2">{item.summary}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </>
-      ) : (
-        <div className="flex-1 p-8 flex items-center justify-center">
-          <div className="bg-white p-8 rounded-lg shadow-md text-center text-gray-600 max-w-md">
-            <Info size={48} className="mx-auto mb-4 text-blue-500" />
-            <h2 className="text-2xl font-semibold mb-2">Welcome to the Advisory System</h2>
-            <p>Please select a client from the sidebar to view their advisories and news feeds.</p>
+            {/* Divider */}
+            <div className="border-t my-4"></div>
+
+            {/* Assign New Tech Stack */}
+            <section>
+              <h4 className="font-semibold text-gray-700 mb-2">Assign New Tech Stack</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                <select
+                  className="form-input col-span-1"
+                  value={newTechStackId}
+                  onChange={(e) => setNewTechStackId(e.target.value)}
+                >
+                  <option value="">-- Select Tech --</option>
+                  {techStacks.map((stack) => (
+                    <option key={stack.id} value={stack.id}>
+                      {stack.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  placeholder="Version"
+                  value={newVersion}
+                  onChange={(e) => setNewVersion(e.target.value)}
+                  className="form-input col-span-1"
+                />
+                <button onClick={handleAddClientTechVersion} className="submit-button col-span-1 whitespace-nowrap !py-2">
+                  <PlusCircle size={16} className="mr-2" /> Assign
+                </button>
+              </div>
+            </section>
           </div>
         </div>
       )}
 
-      {/* RSS Feed Management Modal */}
-      {showRssModal && (
+
+      {/* NEW: Tech Stack Management Modal */}
+      {showTechModal && (
         <div className="modal-overlay">
-          <div className="modal-content">
-            <h3 className="modal-title">Manage RSS Feeds for {selectedClientName}</h3>
-            <div className="rss-input-group">
-              <input
-                type="url"
-                placeholder="Enter RSS Feed URL"
-                value={newRssFeedUrl}
-                onChange={handleRssUrlChange}
-                className="rss-input"
-              />
-              <button onClick={handleAddRssFeed} className="add-rss-button">
-                Add Feed
-              </button>
+          <div className="modal-content" style={{ maxWidth: '500px' }}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="modal-title">Manage Tech Stacks</h3>
+              <button onClick={() => setShowTechModal(false)} className="modal-close-icon"><X size={24} /></button>
             </div>
-            <ul className="rss-list">
-              {rssFeeds.length === 0 ? (
-                <li className="no-rss-message">No RSS feeds for this client.</li>
-              ) : (
-                rssFeeds.map(feed => (
-                  <li key={feed.id} className="rss-item">
-                    <span className="rss-url">{feed.url}</span>
-                    <button onClick={() => handleDeleteRssFeed(feed.id)} className="delete-rss-button">
-                      Delete
-                    </button>
-                  </li>
-                ))
-              )}
-            </ul>
-            <button onClick={() => setShowRssModal(false)} className="modal-close-button">
-              Close
-            </button>
+
+            <h4 className="font-semibold text-gray-700 mb-2">Existing Tech Stacks</h4>
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-2 border rounded-md p-3 bg-gray-50 mb-4">
+              {techStacks.length > 0 ? techStacks.map(tech => (
+                <div key={tech.id} className="p-2 bg-white rounded border">{tech.name}</div>
+              )) : <p className="text-sm text-gray-500 italic">No tech stacks defined.</p>}
+            </div>
+
+            <div className="border-t my-4"></div>
+
+            <section>
+  <h4 className="font-semibold text-gray-700 mb-2">Manage RSS Feeds</h4>
+  <select
+    className="form-input mb-3"
+    value={selectedTechStackId}
+    onChange={(e) => {
+      setSelectedTechStackId(e.target.value);
+      fetchRssFeeds(e.target.value);
+    }}
+  >
+    <option value="">-- Select Tech Stack --</option>
+    {techStacks.map(stack => (
+      <option key={stack.id} value={stack.id}>{stack.name}</option>
+    ))}
+  </select>
+
+  <ul className="space-y-2 mb-4">
+    {rssFeeds.map((feed, index) => (
+      <li key={index} className="text-sm text-gray-600 border p-2 rounded">{feed.url}</li>
+    ))}
+  </ul>
+
+  <div className="flex gap-2">
+    <input
+      type="text"
+      placeholder="https://example.com/rss"
+      value={newRssUrl}
+      onChange={(e) => setNewRssUrl(e.target.value)}
+      className="form-input flex-grow"
+    />
+    <button onClick={handleAddRssFeed} className="submit-button">Add RSS</button>
+  </div>
+</section>
+
+
+            <h4 className="font-semibold text-gray-700 mb-2">Add New Tech Stack</h4>
+            <form onSubmit={handleAddNewTechStack} className="flex gap-4 items-center">
+              <input
+                type="text"
+                placeholder="e.g., CentOS, Ubuntu, Cisco IOS"
+                value={newTechName}
+                onChange={(e) => setNewTechName(e.target.value)}
+                className="form-input flex-grow"
+                required
+              />
+              <button type="submit" className="submit-button whitespace-nowrap !py-2">
+                <PlusCircle size={16} className="mr-2" /> Add Tech
+              </button>
+            </form>
           </div>
         </div>
       )}
