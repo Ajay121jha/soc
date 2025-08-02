@@ -1113,13 +1113,18 @@ def setup_routes(app):
         finally:
             conn.close()
 
+    # In routes.py
+
     @app.route("/api/clients/<int:client_id>/feed-items", methods=["GET"])
     def get_client_feed_items(client_id):
-        """Aggregates and fetches RSS news items for all technologies a client uses."""
+        """
+        Aggregates and fetches RSS news items for all technologies a client uses,
+        filtered for relevance and showing only new items.
+        """
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        # This query finds all unique RSS feed URLs related to a client's tech stack.
+        # 1. Find all RSS feed URLs for the client's tech stack
         query = """
             SELECT DISTINCT rf.url FROM rss_feeds rf
             JOIN client_tech_map ctm ON rf.tech_stack_id = ctm.tech_stack_id
@@ -1127,23 +1132,62 @@ def setup_routes(app):
         """
         cursor.execute(query, (client_id,))
         feeds = cursor.fetchall()
-        conn.close()
 
-        all_items = []
+        # 2. Get all item GUIDs that have already been processed
+        cursor.execute("SELECT item_guid FROM processed_feed_items")
+        seen_items_results = cursor.fetchall()
+        seen_items_set = {item['item_guid'] for item in seen_items_results}
+        
+        # 3. Process feeds, filter for keywords, and check for newness
+        RELEVANT_KEYWORDS = [
+            'vulnerability', 'threat', 'security', 'update', 
+            'patch', 'advisory', 'cve-', 'malware', 'exploit'
+        ]
+        
+        new_items_to_display = []
+        new_guids_to_log = []
+
         for feed in feeds:
             try:
                 parsed_feed = feedparser.parse(feed['url'])
-                # Get the latest 5 items from each feed
-                for entry in parsed_feed.entries[:5]:
-                    all_items.append({
-                        "title": entry.get("title", "No Title"),
-                        "link": entry.get("link", "#"),
-                        "summary": entry.get("summary", "No summary available."),
-                    })
+                for entry in parsed_feed.entries:
+                    # Use 'guid' if available, otherwise fall back to 'link' as a unique ID
+                    item_guid = entry.get('guid', entry.get('link'))
+                    if not item_guid:
+                        continue # Skip entries without a unique identifier
+
+                    # CHECK 1: Has this item been seen before?
+                    if item_guid in seen_items_set:
+                        continue # Skip to the next item
+
+                    # CHECK 2: Is this item relevant?
+                    content_to_check = (entry.get("title", "") + entry.get("summary", "")).lower()
+                    if any(keyword in content_to_check for keyword in RELEVANT_KEYWORDS):
+                        # If it's new and relevant, add it to our lists
+                        new_items_to_display.append({
+                            "title": entry.get("title", "No Title"),
+                            "link": entry.get("link", "#"),
+                            "summary": entry.get("summary", "No summary available."),
+                        })
+                        new_guids_to_log.append(item_guid)
+                        # Add to the set immediately to avoid processing duplicates from other feeds
+                        seen_items_set.add(item_guid)
+
             except Exception as e:
                 print(f"Error fetching or parsing feed {feed['url']}: {e}")
+
+        # 4. If we found any new relevant items, log their GUIDs to the database
+        if new_guids_to_log:
+            insert_query = "INSERT INTO processed_feed_items (item_guid) VALUES (%s)"
+            # Prepare a list of tuples for executemany
+            values_to_insert = [(guid,) for guid in new_guids_to_log]
+            cursor.executemany(insert_query, values_to_insert)
+            conn.commit()
+
+        conn.close()
         
-        return jsonify(all_items)
+        # Return the newly found relevant items
+        return jsonify(new_items_to_display)
         
     @app.route("/api/advisories/bulk", methods=['POST'])
     def create_bulk_advisory():
@@ -1242,3 +1286,34 @@ This advisory provides critical information regarding a recent {update_type} for
 # app = Flask(__name__)
 # setup_advisory_routes(app)
 # # ... setup other routes
+
+
+
+
+
+    @app.route('/api/rss-feeds', methods=['GET', 'POST'])
+    def manage_rss_feeds():
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True if request.method == 'GET' else False)
+
+        if request.method == 'GET':
+            tech_stack_id = request.args.get('techStackId')
+            if not tech_stack_id:
+                conn.close()
+                return jsonify({'error': 'Missing techStackId'}), 400
+            cursor.execute("SELECT url FROM rss_feeds WHERE tech_stack_id = %s", (tech_stack_id,))
+            feeds = cursor.fetchall()
+            conn.close()
+            return jsonify(feeds)
+
+        elif request.method == 'POST':
+            data = request.get_json()
+            tech_stack_id = data.get('tech_stack_id')
+            url = data.get('url')
+            if not tech_stack_id or not url:
+                conn.close()
+                return jsonify({'error': 'Missing tech_stack_id or url'}), 400
+            cursor.execute("INSERT INTO rss_feeds (tech_stack_id, url) VALUES (%s, %s)", (tech_stack_id, url))
+            conn.commit()
+            conn.close()
+            return jsonify({'message': 'RSS feed added successfully'})
