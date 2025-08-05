@@ -12,12 +12,40 @@ from app.token_utils import validate_token as verify_token
 from datetime import datetime
 from itertools import groupby
 from operator import itemgetter
-
-
+import msal
 import requests
 import certifi
 import feedparser
 from flask_mail import Mail, Message
+
+
+
+
+
+
+
+
+AZURE_TENANT_ID = 'YOUR_TENANT_ID'
+AZURE_CLIENT_ID = 'YOUR_CLIENT_ID'
+AZURE_CLIENT_SECRET = 'YOUR_CLIENT_SECRET'
+GRAPH_SCOPE = ['https://graph.microsoft.com/.default']
+GRAPH_ENDPOINT = 'https://graph.microsoft.com/v1.0'
+
+
+
+def get_graph_access_token():
+    authority = f'https://login.microsoftonline.com/{AZURE_TENANT_ID}'
+    app = msal.ConfidentialClientApplication(
+        client_id=AZURE_CLIENT_ID,
+        client_credential=AZURE_CLIENT_SECRET,
+        authority=authority
+    )
+    result = app.acquire_token_for_client(scopes=GRAPH_SCOPE)
+    if 'access_token' in result:
+        return result['access_token']
+    else:
+        raise Exception(result.get('error_description') or 'Failed to get access token')
+
 
 
 
@@ -1500,6 +1528,73 @@ This advisory provides critical information regarding a recent {update_type} for
 
             return jsonify([single_advisory]) # Return as a list with one item
         
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()
+
+
+
+
+
+
+    @app.route('/api/dispatch-advisory', methods=['POST'])
+    def dispatch_advisory():
+        try:
+            data = request.get_json()
+            advisory_title = data.get('title')
+            advisory_content = data.get('content')
+            client_tech_map_id = data.get('clientTechMapId') # This will identify the client-tech assignment
+
+            if not all([advisory_title, advisory_content, client_tech_map_id]):
+                return jsonify({"error": "Missing advisory details"}), 400
+
+            # Fetch contacts for the specific client-tech assignment
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            query = """
+                SELECT c.email 
+                FROM contacts c
+                WHERE c.client_tech_map_id = %s
+            """
+            cursor.execute(query, (client_tech_map_id,))
+            recipients = [row['email'] for row in cursor.fetchall()]
+            
+            if not recipients:
+                return jsonify({"message": "Advisory not sent. No contacts found for this tech stack."}), 200
+
+            access_token = get_graph_access_token()
+            headers = {
+                'Authorization': f'Bearer {access_token}',
+                'Content-Type': 'application/json'
+            }
+
+            # Construct the email payload
+            email_payload = {
+                "message": {
+                    "subject": advisory_title,
+                    "body": {
+                        "contentType": "Text",
+                        "content": advisory_content
+                    },
+                    "toRecipients": [{"emailAddress": {"address": email}} for email in recipients]
+                },
+                "saveToSentItems": "true"
+            }
+
+            # Send the email via Graph API
+            # NOTE: You'll need to use a mailbox that has permissions to send on behalf of others.
+            # This is a common point of configuration. The "me" here usually requires a signed-in user or an admin-configured mailbox.
+            send_mail_endpoint = f'{GRAPH_ENDPOINT}/users/YOUR_SENDER_EMAIL/sendMail' 
+            
+            response = requests.post(send_mail_endpoint, headers=headers, json=email_payload)
+            
+            if response.status_code == 202:
+                return jsonify({"message": f"Advisory dispatched to {len(recipients)} contacts."}), 200
+            else:
+                return jsonify({"error": f"Failed to send email. Status code: {response.status_code}, Response: {response.text}"}), 500
+
         except Exception as e:
             return jsonify({"error": str(e)}), 500
         finally:

@@ -64,7 +64,7 @@ export default function AdvisorySystem() {
         const response = await fetch(`http://localhost:5000/api/clients/${selectedClientId}/advisories`);
         if (!response.ok) throw new Error('Failed to fetch advisories');
         const data = await response.json();
-        
+
         // The backend returns a single advisory in an array.
         setAdvisories(data);
       } catch (error) {
@@ -72,8 +72,8 @@ export default function AdvisorySystem() {
         setAdvisories([]); // Clear advisories on error
       }
     } else {
-        // If no client is selected, clear advisories
-        setAdvisories([]);
+      // If no client is selected, clear advisories
+      setAdvisories([]);
     }
   }, [selectedClientId]);
 
@@ -408,6 +408,57 @@ export default function AdvisorySystem() {
   };
 
 
+
+
+
+
+
+
+
+  const handleDispatchAdvisory = async (advisory) => {
+    if (!window.confirm(`Are you sure you want to dispatch this advisory to all contacts?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:5000/api/dispatch-advisory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: advisory.title,
+          content: advisory.content,
+          // Assuming you have a way to link the advisory to the specific client-tech assignment
+          // This ID needs to be part of the advisory object from the backend
+          clientTechMapId: advisory.client_tech_map_id
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to dispatch advisory');
+      }
+
+      alert(result.message);
+      // You might want to refresh the advisories after sending
+      fetchAdvisories();
+
+    } catch (error) {
+      console.error("Error dispatching advisory:", error);
+      alert(error.message);
+    }
+  };
+
+
+
+
+
+
+
+
+
+
+
+
   return (
     <div className="flex h-screen bg-gray-100 font-inter text-gray-800">
       {/* Sidebar */}
@@ -486,15 +537,27 @@ export default function AdvisorySystem() {
               <div className="prose" style={{ whiteSpace: 'pre-wrap' }}>
                 <h3 className="text-xl font-bold mb-2">{advisory.title}</h3>
                 <p>{advisory.content}</p>
+
+                <div className="flex justify-end mt-4">
+                  <button
+                    onClick={() => handleDispatchAdvisory(advisory)}
+                    className="submit-button"
+                    title="Dispatch advisory to client contacts"
+                  >
+                    <Send size={16} className='mr-2' /> Dispatch Advisory
+                  </button>
+                </div>
+
+
                 {advisory.source_feeds && (
-                    <>
-                        <h4 className="font-semibold mt-4">Sources:</h4>
-                        <ul className="list-disc list-inside">
-                            {advisory.source_feeds.map((source, idx) => (
-                                <li key={idx}>{source}</li>
-                            ))}
-                        </ul>
-                    </>
+                  <>
+                    <h4 className="font-semibold mt-4">Sources:</h4>
+                    <ul className="list-disc list-inside">
+                      {advisory.source_feeds.map((source, idx) => (
+                        <li key={idx}>{source}</li>
+                      ))}
+                    </ul>
+                  </>
                 )}
               </div>
             </div>
@@ -543,14 +606,14 @@ export default function AdvisorySystem() {
                       <h4 className="config-item-title">
                         {tech.tech_stack_name} (Version: {tech.version})
                       </h4>
-                       <button
-            onClick={() => handleDeleteClientTech(tech.id)}
-            className="delete-button"
-            title="Delete this tech stack"
-        >
-            <X size={16} />
-            Delete
-        </button>
+                      <button
+                        onClick={() => handleDeleteClientTech(tech.id)}
+                        className="delete-button"
+                        title="Delete this tech stack"
+                      >
+                        <X size={16} />
+                        Delete
+                      </button>
                       <div className="mt-2">
                         <h5 className="config-item-subtitle flex items-center gap-2">
                           <Mail size={14} /> Notification Contacts:
