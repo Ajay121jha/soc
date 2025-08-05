@@ -10,6 +10,9 @@ import pandas as pd
 from app.token_utils import generate_token
 from app.token_utils import validate_token as verify_token
 from datetime import datetime
+from itertools import groupby
+from operator import itemgetter
+
 
 import requests
 import certifi
@@ -64,7 +67,6 @@ def setup_routes(app):
             conn = get_db_connection()
             cursor = conn.cursor()
             
-            # Verify employee is actually in this shift
             cursor.execute(
                 "SELECT id FROM shift_employee_map WHERE shift_id = %s AND employee_id = %s",
                 (shift_id, employee_id)
@@ -72,7 +74,6 @@ def setup_routes(app):
             if not cursor.fetchone():
                 return jsonify({"error": "Employee not in this shift"}), 403
             
-            # Check if note already exists
             cursor.execute(
                 "SELECT id FROM handover_notes WHERE shift_id = %s AND employee_id = %s",
                 (shift_id, employee_id)
@@ -80,7 +81,6 @@ def setup_routes(app):
             existing_note = cursor.fetchone()
             
             if existing_note:
-                # Update existing note
                 query = """
                     UPDATE handover_notes
                     SET note = %s, created_at = NOW()
@@ -88,7 +88,6 @@ def setup_routes(app):
                 """
                 cursor.execute(query, (note, shift_id, employee_id))
             else:
-                # Create new note
                 query = """
                     INSERT INTO handover_notes (shift_id, employee_id, note, created_at)
                     VALUES (%s, %s, %s, NOW())
@@ -111,7 +110,7 @@ def setup_routes(app):
         data = request.get_json()
         shift_id = data.get("shift_id")
         employee_id = data.get("employee_id")
-        cab_facility = data.get("cab_facility")  # "Yes" or "No"
+        cab_facility = data.get("cab_facility")
 
         if not all([shift_id, employee_id, cab_facility]):
             return jsonify({"error": "Missing required fields"}), 400
@@ -333,7 +332,6 @@ def setup_routes(app):
             conn = get_db_connection()
             cursor = conn.cursor()
 
-            # Check if a shift already exists with same start, end, and type
             cursor.execute("""
                 SELECT id FROM shift_assignments
                 WHERE start_datetime = %s AND end_datetime = %s AND shift_type = %s
@@ -343,7 +341,6 @@ def setup_routes(app):
             if existing_shift:
                 shift_id = existing_shift[0]
             else:
-                # Create new shift
                 cursor.execute("""
                     INSERT INTO shift_assignments (shift_type, start_datetime, end_datetime)
                     VALUES (%s, %s, %s)
@@ -351,7 +348,6 @@ def setup_routes(app):
                 conn.commit()
                 shift_id = cursor.lastrowid
 
-            # Link employees to the shift
             for emp_id in employee_ids:
                 cursor.execute("""
                     SELECT 1 FROM shift_employee_map
@@ -379,14 +375,13 @@ def setup_routes(app):
     def edit_shift():
         data = request.get_json()
         shift_id = data.get('shift_id')
-        date = data.get('date')  # format: 'YYYY-MM-DD'
-        shift_type = data.get('shift_type')  # e.g., 'morning'
-        new_employee_id = data.get('employee_id')  # new employee reassignment
+        date = data.get('date')
+        shift_type = data.get('shift_type')
+        new_employee_id = data.get('employee_id')
 
         if not all([shift_id, date, shift_type, new_employee_id]):
             return jsonify({'error': 'Missing required parameters'}), 400
 
-        # Define start/end times for shift types
         shift_times = {
             'morning': ('08:00:00', '16:00:00'),
             'evening': ('16:00:00', '00:00:00'),
@@ -401,7 +396,6 @@ def setup_routes(app):
             conn = get_db_connection()
             cursor = conn.cursor()
 
-            # Update shift_assignments
             cursor.execute("""
                 UPDATE shift_assignments
                 SET date = %s,
@@ -411,7 +405,6 @@ def setup_routes(app):
                 WHERE id = %s
             """, (date, shift_type, start_time, end_time, shift_id))
 
-            # Update assigned employee
             cursor.execute("""
                 UPDATE shift_employee_map
                 SET employee_id = %s
@@ -428,7 +421,6 @@ def setup_routes(app):
 
     
 
-    # Delete Route
     @app.route('/api/delete_shift', methods=['DELETE'])
     def delete_shift():
         data = request.get_json()
@@ -441,14 +433,8 @@ def setup_routes(app):
             conn=get_db_connection()
             cursor=conn.cursor()
 
-            # First delete from dependent table
             cursor.execute("DELETE FROM shift_employee_map WHERE shift_id = %s", (shift_id,))
-
-            # then notes
-            # 1. First delete all notes associated with this shift
             cursor.execute("DELETE FROM handover_notes WHERE shift_id = %s", (shift_id,))
-
-            # Then delete the shift itself
             cursor.execute("DELETE FROM shift_assignments WHERE id = %s", (shift_id,))
             conn.commit()
             conn.close()
@@ -517,7 +503,6 @@ def setup_routes(app):
                 'status', 'reason', 'context', 'remarks'
             ]
 
-        # Check for missing fields
             if not all(field in data and data[field] for field in required_fields):
                 return jsonify({"message": "All fields are required."}), 400
 
@@ -685,7 +670,7 @@ def setup_routes(app):
                 mode = data.get("mode")
                 asset_type = data.get("asset_type")
                 asset_owner = data.get("asset_owner")
-                remarks = data.get("remarks", "")  # remarks is optional
+                remarks = data.get("remarks", "")
                 client_id = data.get("client_id")
 
                 cursor.execute(
@@ -832,6 +817,12 @@ def setup_routes(app):
 
 
 
+
+
+
+
+
+
     @app.route('/api/clusters', methods=['GET'])
     def get_clusters():
         try:
@@ -890,6 +881,7 @@ def setup_routes(app):
             return jsonify({'message': 'User deleted from cluster successfully'}), 200
         except Exception as e:
             return jsonify({'error': str(e)}), 500
+
 
 
 
@@ -979,7 +971,6 @@ def setup_routes(app):
 
 
 
-
     
 
     def get_contacts_for_tech_map(cursor, client_tech_map_id):
@@ -1042,7 +1033,6 @@ def setup_routes(app):
                 return jsonify({"id": new_stack_id, "name": name, "description": description}), 201
             except mysql.connector.Error as err:
                 conn.close()
-                # Handle potential duplicate entry
                 if err.errno == 1062:
                     return jsonify({"error": f"Tech stack '{name}' already exists."}), 409
                 return jsonify({"error": str(err)}), 500
@@ -1054,7 +1044,6 @@ def setup_routes(app):
         cursor = conn.cursor(dictionary=True)
         
         if request.method == "GET":
-            # This query joins the tables to get the tech name and version for a client.
             query = """
                 SELECT ctm.id, ts.name as tech_stack_name, ctm.version
                 FROM client_tech_map ctm
@@ -1063,14 +1052,12 @@ def setup_routes(app):
             """
             cursor.execute(query, (client_id,))
             tech_details = cursor.fetchall()
-            # For each tech, we also fetch its associated contacts.
             for detail in tech_details:
                 detail['contacts'] = get_contacts_for_tech_map(cursor, detail['id'])
             conn.close()
             return jsonify(tech_details)
 
         if request.method == "POST":
-            # Assigns a new technology and version to a client.
             data = request.get_json()
             tech_stack_id = data.get("tech_stack_id")
             version = data.get("version")
@@ -1112,92 +1099,167 @@ def setup_routes(app):
             return jsonify({"error": f"Failed to add contact: {e}"}), 500
         finally:
             conn.close()
-
-    # In routes.py
-
+    
+   # <<< FIXED & REFACTORED FUNCTION TO CREATE AND UPDATE A SINGLE CONSOLIDATED DRAFT >>>
     @app.route("/api/clients/<int:client_id>/feed-items", methods=["GET"])
     def get_client_feed_items(client_id):
-        """
-        Aggregates and fetches RSS news items for all technologies a client uses,
-        filtered for relevance and showing only new items.
-        """
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        
-        # 1. Find all RSS feed URLs for the client's tech stack
-        query = """
-            SELECT DISTINCT rf.url FROM rss_feeds rf
-            JOIN client_tech_map ctm ON rf.tech_stack_id = ctm.tech_stack_id
-            WHERE ctm.client_id = %s
-        """
-        cursor.execute(query, (client_id,))
-        feeds = cursor.fetchall()
+        conn = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            # 1. Find all RSS feed URLs and their associated tech_stack_id for the client
+            query = """
+                SELECT DISTINCT rf.url, rf.tech_stack_id, ts.name as tech_stack_name
+                FROM rss_feeds rf
+                JOIN client_tech_map ctm ON rf.tech_stack_id = ctm.tech_stack_id
+                JOIN tech_stacks ts ON rf.tech_stack_id = ts.id
+                WHERE ctm.client_id = %s
+            """
+            cursor.execute(query, (client_id,))
+            feeds = cursor.fetchall()
+            cursor.close()
 
-        # 2. Get all item GUIDs that have already been processed
-        cursor.execute("SELECT item_guid FROM processed_feed_items")
-        seen_items_results = cursor.fetchall()
-        seen_items_set = {item['item_guid'] for item in seen_items_results}
-        
-        # 3. Process feeds, filter for keywords, and check for newness
-        RELEVANT_KEYWORDS = [
-            'vulnerability', 'threat', 'security', 'update', 
-            'patch', 'advisory', 'cve-', 'malware', 'exploit'
-        ]
-        
-        new_items_to_display = []
-        new_guids_to_log = []
+            # 2. Get all item GUIDs that have already been processed
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT item_guid FROM processed_feed_items")
+            seen_items_results = cursor.fetchall()
+            seen_items_set = {item['item_guid'] for item in seen_items_results}
+            cursor.close()
+            
+            # 3. Process feeds, filter for keywords, and check for newness
+            RELEVANT_KEYWORDS = [
+                'vulnerability', 'threat', 'security', 'update', 
+                'patch', 'advisory', 'cve-', 'malware', 'exploit'
+            ]
+            
+            new_items_found = []
+            new_guids_to_log = []
 
-        for feed in feeds:
-            try:
-                parsed_feed = feedparser.parse(feed['url'])
-                for entry in parsed_feed.entries:
-                    # Use 'guid' if available, otherwise fall back to 'link' as a unique ID
-                    item_guid = entry.get('guid', entry.get('link'))
-                    if not item_guid:
-                        continue # Skip entries without a unique identifier
+            for feed in feeds:
+                try:
+                    tech_stack_id_for_feed = feed['tech_stack_id']
+                    tech_stack_name_for_feed = feed['tech_stack_name']
+                    parsed_feed = feedparser.parse(feed['url'])
 
-                    # CHECK 1: Has this item been seen before?
-                    if item_guid in seen_items_set:
-                        continue # Skip to the next item
+                    for entry in parsed_feed.entries:
+                        item_guid = entry.get('guid', entry.get('link'))
+                        if not item_guid or item_guid in seen_items_set:
+                            continue
 
-                    # CHECK 2: Is this item relevant?
-                    content_to_check = (entry.get("title", "") + entry.get("summary", "")).lower()
-                    if any(keyword in content_to_check for keyword in RELEVANT_KEYWORDS):
-                        # If it's new and relevant, add it to our lists
-                        new_items_to_display.append({
-                            "title": entry.get("title", "No Title"),
-                            "link": entry.get("link", "#"),
-                            "summary": entry.get("summary", "No summary available."),
-                        })
-                        new_guids_to_log.append(item_guid)
-                        # Add to the set immediately to avoid processing duplicates from other feeds
-                        seen_items_set.add(item_guid)
+                        content_to_check = (entry.get("title", "") + entry.get("summary", "")).lower()
+                        if any(keyword in content_to_check for keyword in RELEVANT_KEYWORDS):
+                            feed_item_data = {
+                                "title": entry.get("title", "No Title"),
+                                "link": entry.get("link", "#"),
+                                "summary": entry.get("summary", "No summary available."),
+                                "tech_stack_id": tech_stack_id_for_feed,
+                                "tech_stack_name": tech_stack_name_for_feed
+                            }
+                            new_items_found.append(feed_item_data)
+                            new_guids_to_log.append(item_guid)
+                            seen_items_set.add(item_guid)
 
-            except Exception as e:
-                print(f"Error fetching or parsing feed {feed['url']}: {e}")
+                except Exception as e:
+                    print(f"Error fetching or parsing feed {feed['url']}: {e}")
 
-        # 4. If we found any new relevant items, log their GUIDs to the database
-        if new_guids_to_log:
-            insert_query = "INSERT INTO processed_feed_items (item_guid) VALUES (%s)"
-            # Prepare a list of tuples for executemany
-            values_to_insert = [(guid,) for guid in new_guids_to_log]
-            cursor.executemany(insert_query, values_to_insert)
-            conn.commit()
+            if not new_items_found:
+                return jsonify([])
 
-        conn.close()
-        
-        # Return the newly found relevant items
-        return jsonify(new_items_to_display)
+            # 4. Log the new GUIDs so we don't process them again
+            if new_guids_to_log:
+                cursor = conn.cursor()
+                insert_guid_query = "INSERT INTO processed_feed_items (item_guid) VALUES (%s)"
+                guid_values_to_insert = [(guid,) for guid in new_guids_to_log]
+                cursor.executemany(insert_guid_query, guid_values_to_insert)
+                cursor.close()
+                conn.commit()
+
+            # 5. Group new items by tech_stack_id to create consolidated drafts
+            items_by_tech = {}
+            for item in new_items_found:
+                tech_id = item['tech_stack_id']
+                if tech_id not in items_by_tech:
+                    items_by_tech[tech_id] = []
+                items_by_tech[tech_id].append(item)
+
+            for tech_id, items_list in items_by_tech.items():
+                # For each tech group, find the one client we're operating on
+                tech_stack_name = items_list[0]['tech_stack_name']
+
+                # Format the new information block from all new feed items in this group
+                new_findings_block = ""
+                for item in items_list:
+                    new_findings_block += f"""
+---
+**New Finding:** {item['title']}
+**Source:** {item['link']}
+**Summary:** {item['summary']}
+"""
+                
+                cursor = conn.cursor(dictionary=True)
+                # Check for an existing draft for THIS client and THIS tech stack
+                cursor.execute(
+                    "SELECT id, advisory_content FROM advisories WHERE client_id = %s AND service_or_os = %s AND status = 'Draft'",
+                    (client_id, tech_stack_name)
+                )
+                existing_draft = cursor.fetchone()
+
+                if existing_draft:
+                    # Append new findings to the existing draft
+                    updated_content = existing_draft['advisory_content'] + new_findings_block
+                    cursor.execute(
+                        "UPDATE advisories SET advisory_content = %s, timestamp = NOW() WHERE id = %s",
+                        (updated_content, existing_draft['id'])
+                    )
+                else:
+                    # Create a new consolidated draft
+                    cursor.execute("SELECT name FROM clients WHERE id = %s", (client_id,))
+                    client_name = cursor.fetchone()['name']
+                    initial_content = f"""**Automated Advisory Draft**
+
+**Topic:** Potential Issues for {tech_stack_name}
+**Date Generated:** {datetime.now().strftime('%d/%m/%Y')}
+
+This is a consolidated summary of new findings related to your technology stack. Please review, edit, and dispatch.
+{new_findings_block}
+---
+*This is an automated draft. Please review for accuracy.*
+"""
+                    cursor.execute(
+                        """
+                        INSERT INTO advisories (client_id, client_name, service_or_os, update_type, description, advisory_content, status, timestamp)
+                        VALUES (%s, %s, %s, %s, %s, %s, 'Draft', NOW())
+                        """,
+                        (
+                            client_id, client_name, tech_stack_name,
+                            "Automated Consolidated Alert",
+                            f"Multiple new findings for {tech_stack_name}",
+                            initial_content
+                        )
+                    )
+                conn.commit()
+                cursor.close()
+
+            return jsonify(new_items_found)
+
+        except Exception as e:
+            # Print the full traceback to the console for detailed debugging
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            if conn and conn.is_connected():
+                conn.close()
         
     @app.route("/api/advisories/bulk", methods=['POST'])
     def create_bulk_advisory():
         """
-        The core endpoint. Creates and dispatches advisories to all clients
-        using a specific technology and version.
+        Creates and dispatches advisories manually. Status is set to 'Sent'.
         """
         data = request.get_json()
         tech_stack_id = data.get("techStackId")
-        version_pattern = data.get("version", "").replace('*', '%') # Allow wildcards
+        version_pattern = data.get("version", "").replace('*', '%')
         update_type = data.get("updateType")
         description = data.get("description")
         impact = data.get("impact", "Not specified.")
@@ -1209,8 +1271,6 @@ def setup_routes(app):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        # 1. Find all clients using the specified tech_stack and a matching version.
-        #    The LIKE operator allows for flexible version matching (e.g., "11.x", "22H2*").
         find_clients_query = """
             SELECT c.id as client_id, c.name as client_name, ts.name as tech_stack_name
             FROM clients c
@@ -1225,14 +1285,7 @@ def setup_routes(app):
             conn.close()
             return jsonify({"message": "No clients found matching the specified technology and version."}), 200
 
-        # 2. For each affected client, create and store an advisory record.
         for client in affected_clients:
-            # Here you would integrate with Microsoft Graph API to send an email.
-            # You would fetch contacts using:
-            # `SELECT email FROM client_tech_contacts ctc JOIN client_tech_map ctm ON ...`
-            # For now, we will just save the record to our database.
-            
-            # 2a. Format the advisory content using a template.
             advisory_content = f"""**Cybersecurity Advisory: {update_type} for {client['tech_stack_name']}**
 
 **Client:** {client['client_name']}
@@ -1251,12 +1304,11 @@ This advisory provides critical information regarding a recent {update_type} for
 {recommended_actions}
 
 ---
-*This is an automated advisory from the SOC Advisory System.*
+*This is a manually dispatched advisory from the SOC Advisory System.*
 """
-            # 2b. Insert the generated advisory into the database for record-keeping.
             insert_query = """
-                INSERT INTO advisories (client_id, client_name, service_or_os, update_type, description, impact, recommended_actions, advisory_content, timestamp)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                INSERT INTO advisories (client_id, client_name, service_or_os, update_type, description, impact, recommended_actions, advisory_content, status, timestamp)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'Sent', NOW())
             """
             cursor.execute(insert_query, (
                 client['client_id'], client['client_name'], client['tech_stack_name'],
@@ -1270,30 +1322,52 @@ This advisory provides critical information regarding a recent {update_type} for
 
     @app.route('/api/advisories', methods=['GET'])
     def get_advisories():
-        """Fetches all previously sent advisories for the main feed."""
+        """Fetches all advisories for the main feed, including status."""
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        # Selecting all necessary fields for display
-        cursor.execute("SELECT id, client_id, client_name, advisory_content, timestamp FROM advisories ORDER BY timestamp DESC")
+        cursor.execute("SELECT id, client_id, client_name, advisory_content, status, timestamp FROM advisories ORDER BY timestamp DESC")
         data = cursor.fetchall()
         conn.close()
         return jsonify(data)
 
-# Example of how to use this in your main app.py
-# from flask import Flask
-# from .routes_advisory import setup_advisory_routes
-#
-# app = Flask(__name__)
-# setup_advisory_routes(app)
-# # ... setup other routes
+    @app.route('/api/advisories/<int:advisory_id>', methods=['PUT'])
+    def update_advisory(advisory_id):
+        """Updates the content and/or status of an advisory."""
+        data = request.get_json()
+        new_content = data.get('advisory_content')
+        new_status = data.get('status')
 
+        if not new_content and not new_status:
+            return jsonify({'error': 'No content or status provided for update'}), 400
 
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        fields_to_update = []
+        params = []
+        if new_content:
+            fields_to_update.append("advisory_content = %s")
+            params.append(new_content)
+        if new_status in ['Draft', 'Sent']:
+            fields_to_update.append("status = %s")
+            params.append(new_status)
+        
+        if not fields_to_update:
+            return jsonify({'error': 'Invalid fields for update'}), 400
 
+        params.append(advisory_id)
+        query = f"UPDATE advisories SET {', '.join(fields_to_update)}, timestamp = NOW() WHERE id = %s"
+        
+        cursor.execute(query, tuple(params))
+        conn.commit()
+        conn.close()
 
+        return jsonify({'message': 'Advisory updated successfully'}), 200
 
-    @app.route('/api/rss-feeds', methods=['GET', 'POST'])
+    @app.route('/api/rss-feeds', methods=['GET', 'POST', 'DELETE'])
     def manage_rss_feeds():
         conn = get_db_connection()
+        # Use dictionary=True for GET, but not for others to avoid issues
         cursor = conn.cursor(dictionary=True if request.method == 'GET' else False)
 
         if request.method == 'GET':
@@ -1313,7 +1387,121 @@ This advisory provides critical information regarding a recent {update_type} for
             if not tech_stack_id or not url:
                 conn.close()
                 return jsonify({'error': 'Missing tech_stack_id or url'}), 400
-            cursor.execute("INSERT INTO rss_feeds (tech_stack_id, url) VALUES (%s, %s)", (tech_stack_id, url))
+            try:
+                cursor.execute("INSERT INTO rss_feeds (tech_stack_id, url) VALUES (%s, %s)", (tech_stack_id, url))
+                conn.commit()
+                return jsonify({'message': 'RSS feed added successfully'})
+            except mysql.connector.Error as err:
+                 # Check for duplicate entry error
+                if err.errno == 1062:
+                    return jsonify({"error": "This RSS feed URL already exists for this tech stack."}), 409
+                return jsonify({"error": str(err)}), 500
+            finally:
+                conn.close()
+
+        # <<< NEW: Handle DELETE requests >>>
+        elif request.method == 'DELETE':
+            data = request.get_json()
+            tech_stack_id = data.get('tech_stack_id')
+            urls_to_delete = data.get('urls')
+
+            if not tech_stack_id or not urls_to_delete or not isinstance(urls_to_delete, list):
+                conn.close()
+                return jsonify({'error': 'A tech_stack_id and a list of urls are required.'}), 400
+            
+            try:
+                # Prepare query with placeholders for the IN clause
+                placeholders = ', '.join(['%s'] * len(urls_to_delete))
+                query = f"DELETE FROM rss_feeds WHERE tech_stack_id = %s AND url IN ({placeholders})"
+                
+                # Combine parameters into a single tuple
+                params = (tech_stack_id,) + tuple(urls_to_delete)
+                
+                cursor.execute(query, params)
+                conn.commit()
+                
+                # Check how many rows were deleted
+                deleted_count = cursor.rowcount
+                return jsonify({'message': f'{deleted_count} RSS feed(s) deleted successfully.'}), 200
+            except Exception as e:
+                conn.rollback()
+                return jsonify({'error': f"Failed to delete feeds: {e}"}), 500
+            finally:
+                conn.close()
+
+
+
+
+    @app.route('/api/client-tech/<int:client_tech_map_id>', methods=['DELETE'])
+    def delete_client_tech(client_tech_map_id):
+        """Deletes a specific tech stack assigned to a client."""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            query = "DELETE FROM client_tech_map WHERE id = %s"
+            cursor.execute(query, (client_tech_map_id,))
             conn.commit()
+
+            if cursor.rowcount == 0:
+                return jsonify({"error": "No tech stack assignment found with that ID."}), 404
+
+            return jsonify({"message": "Tech stack assignment deleted successfully"}), 200
+
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
             conn.close()
-            return jsonify({'message': 'RSS feed added successfully'})
+
+
+
+    
+
+
+    @app.route('/api/clients/<int:client_id>/advisories', methods=['GET'])
+    def get_client_advisories(client_id):
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+
+            # 1. Fetch all RSS URLs for the client
+            rss_query = "SELECT rss_url FROM client_rss_feeds WHERE client_id = %s"
+            cursor.execute(rss_query, (client_id,))
+            rss_urls = [row['rss_url'] for row in cursor.fetchall()]
+
+            combined_advisory_text = ""
+            advisory_entries = []
+
+            # 2. Iterate through each URL and combine the feed content
+            for url in rss_urls:
+                feed = feedparser.parse(url)
+                for entry in feed.entries:
+                    advisory_entries.append({
+                        "title": entry.title,
+                        "summary": getattr(entry, 'summary', getattr(entry, 'description', '')),
+                        "link": entry.link
+                    })
+            
+            # You can now format this combined data however you like.
+            # For example, create a single large advisory text.
+            for entry in advisory_entries:
+                combined_advisory_text += f"Title: {entry['title']}\n"
+                combined_advisory_text += f"Summary: {entry['summary']}\n"
+                combined_advisory_text += "-----\n"
+
+            # 3. Create a single advisory object
+            single_advisory = {
+                "title": f"Combined Advisory for Client ID {client_id}",
+                "content": combined_advisory_text,
+                "source_feeds": [entry["title"] for entry in advisory_entries]
+            }
+
+            return jsonify([single_advisory]) # Return as a list with one item
+        
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()

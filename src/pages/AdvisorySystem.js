@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Briefcase, Calendar, Search, Send, Layers, Settings, X, PlusCircle, Mail, Tags } from 'lucide-react';
+import { Briefcase, Calendar, Search, Send, Layers, Settings, X, PlusCircle, Mail, Tags, Edit3, Delete } from 'lucide-react';
 // It's good practice to have a separate CSS file for component-specific styles.
 import "../styles/Advisory.css";
 
@@ -43,28 +43,43 @@ export default function AdvisorySystem() {
   // --- Tech Stack Management Modal State ---
   const [showTechModal, setShowTechModal] = useState(false);
   const [newTechName, setNewTechName] = useState('');
+  // <<< NEW: State for RSS Feed deletion >>>
+  const [isDeleteMode, setIsDeleteMode] = useState(false);
+  const [feedsToDelete, setFeedsToDelete] = useState(new Set());
+
+  // <<< NEW: State for the Edit Advisory Modal >>>
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingAdvisory, setEditingAdvisory] = useState(null);
+  const [editTextContent, setEditTextContent] = useState('');
+
+
 
   // --- Data Fetching ---
+
   const fetchAdvisories = useCallback(async () => {
-    try {
-      const response = await fetch('http://localhost:5000/api/advisories');
-      setAdvisories(await response.json());
-    } catch (error) {
-      console.error("Error fetching advisories:", error);
+    // This function will now fetch the consolidated advisory from the backend
+    // It's only called when a client is selected, to match the new logic.
+    if (selectedClientId) {
+      try {
+        const response = await fetch(`http://localhost:5000/api/clients/${selectedClientId}/advisories`);
+        if (!response.ok) throw new Error('Failed to fetch advisories');
+        const data = await response.json();
+        
+        // The backend returns a single advisory in an array.
+        setAdvisories(data);
+      } catch (error) {
+        console.error("Error fetching advisories:", error);
+        setAdvisories([]); // Clear advisories on error
+      }
+    } else {
+        // If no client is selected, clear advisories
+        setAdvisories([]);
     }
-  }, []);
-
-
-
+  }, [selectedClientId]);
 
   const [rssFeeds, setRssFeeds] = useState([]);
   const [newRssUrl, setNewRssUrl] = useState('');
   const [selectedTechStackId, setSelectedTechStackId] = useState('');
-
-
-
-
-
 
   const fetchTechStacks = useCallback(async () => {
     try {
@@ -85,8 +100,7 @@ export default function AdvisorySystem() {
             const data = await res.json();
             setClients(data.map(c => ({ id: c[0], name: c[1] })));
           })(),
-          fetchTechStacks(),
-          fetchAdvisories()
+          fetchTechStacks()
         ]);
       } catch (error) {
         console.error("Error fetching initial data:", error);
@@ -95,8 +109,16 @@ export default function AdvisorySystem() {
       }
     };
     fetchInitialData();
-  }, [fetchAdvisories, fetchTechStacks]);
+  }, [fetchTechStacks]);
 
+  // Use this effect to fetch the combined advisory whenever the selected client changes.
+  useEffect(() => {
+    fetchAdvisories();
+  }, [selectedClientId, fetchAdvisories]);
+
+  // This old useEffect is no longer needed because the new backend route handles this.
+  // It should be removed to avoid fetching individual feed items.
+  /*
   useEffect(() => {
     const fetchRssItems = async () => {
       if (!selectedClientId) {
@@ -117,6 +139,8 @@ export default function AdvisorySystem() {
     };
     fetchRssItems();
   }, [selectedClientId]);
+  */
+
 
   // --- Handlers for Modals ---
   const openClientConfigModal = useCallback(async (client) => {
@@ -131,6 +155,44 @@ export default function AdvisorySystem() {
       setClientTechDetails([]);
     }
   }, []);
+
+  // <<< NEW: Handlers for the Edit Advisory Modal >>>
+  const handleOpenEditModal = (advisory) => {
+    setEditingAdvisory(advisory);
+    setEditTextContent(advisory.advisory_content);
+    setShowEditModal(true);
+  };
+
+  const handleCloseEditModal = () => {
+    setShowEditModal(false);
+    setEditingAdvisory(null);
+    setEditTextContent('');
+  };
+
+  const handleUpdateAdvisory = async (newStatus) => {
+    if (!editingAdvisory) return;
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/advisories/${editingAdvisory.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          advisory_content: editTextContent,
+          status: newStatus // 'Draft' or 'Sent'
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || `Failed to update advisory`);
+
+      alert(`Advisory successfully ${newStatus === 'Sent' ? 'dispatched' : 'saved'}.`);
+      handleCloseEditModal();
+      fetchAdvisories(); // Refresh the list to show the change
+    } catch (error) {
+      console.error("Error updating advisory:", error);
+      alert(error.message);
+    }
+  };
+
 
   const handleAddClientTechVersion = async () => {
     if (!newTechStackId || !newVersion.trim()) {
@@ -218,7 +280,7 @@ export default function AdvisorySystem() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Failed to submit bulk advisory');
 
-      await fetchAdvisories();
+      fetchAdvisories();
       alert(result.message);
       setNewAdvisory({ techStackId: '', version: '', updateType: '', description: '', impact: '', recommendedActions: '' });
     } catch (error) {
@@ -230,53 +292,120 @@ export default function AdvisorySystem() {
   };
 
   // --- Filtering and Derived State ---
-  const filteredAdvisories = advisories.filter(advisory =>
-    (selectedClientId === '' || advisory.client_id === Number(selectedClientId))
-  );
+  // This is no longer necessary as the backend returns a single advisory per client
+  // const filteredAdvisories = advisories.filter(advisory =>
+  //   (selectedClientId === '' || advisory.client_id === Number(selectedClientId))
+  // );
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(clientSearchTerm.toLowerCase())
   );
   const selectedClientName = clients.find(c => c.id === Number(selectedClientId))?.name || '';
 
+  const fetchRssFeeds = async (techStackId) => {
+    if (!techStackId) {
+      setRssFeeds([]);
+      return;
+    }
+    try {
+      const res = await fetch(`http://localhost:5000/api/rss-feeds?techStackId=${techStackId}`);
+      const data = await res.json();
+      setRssFeeds(data);
+    } catch (error) {
+      console.error("Error fetching RSS feeds:", error);
+    }
+  };
 
-  
-const fetchRssFeeds = async (techStackId) => {
-  try {
-    const res = await fetch(`http://localhost:5000/api/rss-feeds?techStackId=${techStackId}`);
-    const data = await res.json();
-    setRssFeeds(data);
-  } catch (error) {
-    console.error("Error fetching RSS feeds:", error);
-  }
-};
-
-
-
-
-const handleAddRssFeed = async () => {
-  if (!selectedTechStackId || !newRssUrl.trim()) {
-    alert("Please select a tech stack and enter a valid RSS URL.");
-    return;
-  }
-  try {
-    const res = await fetch('http://localhost:5000/api/rss-feeds', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tech_stack_id: selectedTechStackId, url: newRssUrl })
-    });
-    const result = await res.json();
-    if (!res.ok) throw new Error(result.error || "Failed to add RSS feed");
-    setNewRssUrl('');
-    fetchRssFeeds(selectedTechStackId);
-    alert("RSS feed added successfully!");
-  } catch (error) {
-    console.error("Error adding RSS feed:", error);
-    alert(error.message);
-  }
-};
-
+  const handleAddRssFeed = async () => {
+    if (!selectedTechStackId || !newRssUrl.trim()) {
+      alert("Please select a tech stack and enter a valid RSS URL.");
+      return;
+    }
+    try {
+      const res = await fetch('http://localhost:5000/api/rss-feeds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tech_stack_id: selectedTechStackId, url: newRssUrl })
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Failed to add RSS feed");
+      setNewRssUrl('');
+      fetchRssFeeds(selectedTechStackId);
+      alert("RSS feed added successfully!");
+    } catch (error) {
+      console.error("Error adding RSS feed:", error);
+      alert(error.message);
+    }
+  };
 
 
+
+
+  const handleFeedSelection = (e, url) => {
+    const newSelection = new Set(feedsToDelete);
+    if (e.target.checked) {
+      newSelection.add(url);
+    } else {
+      newSelection.delete(url);
+    }
+    setFeedsToDelete(newSelection);
+  };
+
+  const handleDeleteRssFeeds = async () => {
+    if (feedsToDelete.size === 0 || !selectedTechStackId) {
+      alert("No feeds selected or no tech stack specified.");
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to delete ${feedsToDelete.size} feed(s)? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      const response = await fetch('http://localhost:5000/api/rss-feeds', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tech_stack_id: selectedTechStackId,
+          urls: Array.from(feedsToDelete),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to delete feeds");
+
+      alert(result.message);
+      // Reset state and refresh the list
+      setIsDeleteMode(false);
+      setFeedsToDelete(new Set());
+      fetchRssFeeds(selectedTechStackId);
+    } catch (error) {
+      console.error("Error deleting RSS feeds:", error);
+      alert(error.message);
+    }
+  };
+
+
+
+
+  const handleDeleteClientTech = async (clientTechMapId) => {
+    if (!window.confirm("Are you sure you want to delete this tech stack assignment?")) {
+      return;
+    }
+    try {
+      const response = await fetch(`http://localhost:5000/api/client-tech/${clientTechMapId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete tech stack assignment.');
+      }
+
+      alert("Tech stack assignment deleted successfully!");
+      openClientConfigModal(configuringClient); // Refresh the list
+    } catch (error) {
+      console.error("Failed to delete tech stack:", error);
+      alert(error.message);
+    }
+  };
 
 
   return (
@@ -284,7 +413,6 @@ const handleAddRssFeed = async () => {
       {/* Sidebar */}
       <aside className="w-80 bg-white p-5 shadow-lg flex flex-col">
         <h2 className="text-2xl font-bold text-gray-800 mb-4">SOC Advisory System</h2>
-
         <h3 className="text-lg font-semibold text-gray-700 mb-2">Clients</h3>
         <div className="relative mb-3">
           <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -296,7 +424,6 @@ const handleAddRssFeed = async () => {
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
           />
         </div>
-
         <div className="flex-grow overflow-y-auto border rounded-lg p-2 mb-4 bg-gray-50">
           {filteredClients.map(client => (
             <div
@@ -311,10 +438,9 @@ const handleAddRssFeed = async () => {
             </div>
           ))}
         </div>
-
         <div className="border-t pt-4">
           <div className="flex justify-between items-center mb-3">
-            <h3 className="text-lg font-semibold text-gray-700">Create Bulk Advisory</h3>
+            <h3 className="text-lg font-semibold text-gray-700">Create Manual Advisory</h3>
             <button onClick={() => setShowTechModal(true)} className="secondary-button !py-1" title="Manage Tech Stacks">
               <Tags size={16} /> Manage Tech
             </button>
@@ -335,7 +461,7 @@ const handleAddRssFeed = async () => {
             <textarea name="impact" placeholder="Potential Impact..." value={newAdvisory.impact} onChange={handleInputChange} rows="2" className="form-input"></textarea>
             <textarea name="recommendedActions" placeholder="Recommended Actions..." value={newAdvisory.recommendedActions} onChange={handleInputChange} rows="3" className="form-input"></textarea>
             <button type="submit" className="submit-button" disabled={isLoading}>
-              <Send size={18} className="inline-block mr-2" /> Dispatch to All Affected
+              <Send size={18} className="inline-block mr-2" /> Dispatch Manually
             </button>
           </form>
         </div>
@@ -352,30 +478,38 @@ const handleAddRssFeed = async () => {
           </button>
         </div>
         {isLoading && <p>Loading advisories...</p>}
-        {!isLoading && filteredAdvisories.length === 0 && <p className="text-gray-500 italic text-center mt-8">{selectedClientId ? 'No advisories found for this client.' : 'No advisories have been dispatched yet.'}</p>}
+        {!isLoading && advisories.length === 0 && <p className="text-gray-500 italic text-center mt-8">{selectedClientId ? 'No advisories found for this client.' : 'No advisories have been dispatched yet.'}</p>}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
-          {filteredAdvisories.map(advisory => (
-            <div key={advisory.id} className="advisory-card">
-              <div className="flex items-center mb-3">
-                <Briefcase size={20} className="text-blue-600 mr-3" />
-                <h2 className="text-xl font-semibold text-gray-800">{advisory.client_name}</h2>
+          {/* Renders the single advisory returned from the new backend route */}
+          {advisories.map((advisory, index) => (
+            <div key={index} className="advisory-card">
+              <div className="prose" style={{ whiteSpace: 'pre-wrap' }}>
+                <h3 className="text-xl font-bold mb-2">{advisory.title}</h3>
+                <p>{advisory.content}</p>
+                {advisory.source_feeds && (
+                    <>
+                        <h4 className="font-semibold mt-4">Sources:</h4>
+                        <ul className="list-disc list-inside">
+                            {advisory.source_feeds.map((source, idx) => (
+                                <li key={idx}>{source}</li>
+                            ))}
+                        </ul>
+                    </>
+                )}
               </div>
-              <p className="text-sm text-gray-500 mb-4 flex items-center gap-2">
-                <Calendar size={14} />{advisory.timestamp ? new Date(advisory.timestamp).toLocaleString() : 'N/A'}
-              </p>
-              <div className="prose" style={{ whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: advisory.advisory_content }} />
             </div>
           ))}
         </div>
       </main>
 
       {/* Right Sidebar for RSS Feeds */}
-      <aside className="w-96 bg-white p-5 border-l border-gray-200 overflow-y-auto">
+      {/* This section is now redundant as we are not showing individual feeds anymore */}
+      {/* <aside className="w-96 bg-white p-5 border-l border-gray-200 overflow-y-auto">
         <h2 className="text-2xl font-bold text-gray-800 mb-4">
           Latest News {selectedClientName && `for ${selectedClientName}`}
         </h2>
         {isRssLoading ? <p>Loading news...</p> :
-          rssItems.length === 0 ? <p className="text-gray-500 italic">{selectedClientId ? "No news available for this client's tech stack." : "Select a client to view relevant news."}</p> : (
+          rssItems.length === 0 ? <p className="text-gray-500 italic">{selectedClientId ? "No new relevant items found." : "Select a client to view news."}</p> : (
             <ul className="space-y-4">
               {rssItems.map((item, index) => (
                 <li key={index} className="rss-item-card">
@@ -385,7 +519,7 @@ const handleAddRssFeed = async () => {
               ))}
             </ul>
           )}
-      </aside>
+      </aside> */}
 
       {/* Client Configuration Modal */}
       {showConfigModal && configuringClient && (
@@ -409,6 +543,14 @@ const handleAddRssFeed = async () => {
                       <h4 className="config-item-title">
                         {tech.tech_stack_name} (Version: {tech.version})
                       </h4>
+                       <button
+            onClick={() => handleDeleteClientTech(tech.id)}
+            className="delete-button"
+            title="Delete this tech stack"
+        >
+            <X size={16} />
+            Delete
+        </button>
                       <div className="mt-2">
                         <h5 className="config-item-subtitle flex items-center gap-2">
                           <Mail size={14} /> Notification Contacts:
@@ -477,8 +619,7 @@ const handleAddRssFeed = async () => {
         </div>
       )}
 
-
-      {/* NEW: Tech Stack Management Modal */}
+      {/* Tech Stack Management Modal */}
       {showTechModal && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '500px' }}>
@@ -487,55 +628,10 @@ const handleAddRssFeed = async () => {
               <button onClick={() => setShowTechModal(false)} className="modal-close-icon"><X size={24} /></button>
             </div>
 
-            <h4 className="font-semibold text-gray-700 mb-2">Existing Tech Stacks</h4>
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-2 border rounded-md p-3 bg-gray-50 mb-4">
-              {techStacks.length > 0 ? techStacks.map(tech => (
-                <div key={tech.id} className="p-2 bg-white rounded border">{tech.name}</div>
-              )) : <p className="text-sm text-gray-500 italic">No tech stacks defined.</p>}
-            </div>
-
-            <div className="border-t my-4"></div>
-
-            <section>
-  <h4 className="font-semibold text-gray-700 mb-2">Manage RSS Feeds</h4>
-  <select
-    className="form-input mb-3"
-    value={selectedTechStackId}
-    onChange={(e) => {
-      setSelectedTechStackId(e.target.value);
-      fetchRssFeeds(e.target.value);
-    }}
-  >
-    <option value="">-- Select Tech Stack --</option>
-    {techStacks.map(stack => (
-      <option key={stack.id} value={stack.id}>{stack.name}</option>
-    ))}
-  </select>
-
-  <ul className="space-y-2 mb-4">
-    {rssFeeds.map((feed, index) => (
-      <li key={index} className="text-sm text-gray-600 border p-2 rounded">{feed.url}</li>
-    ))}
-  </ul>
-
-  <div className="flex gap-2">
-    <input
-      type="text"
-      placeholder="https://example.com/rss"
-      value={newRssUrl}
-      onChange={(e) => setNewRssUrl(e.target.value)}
-      className="form-input flex-grow"
-    />
-    <button onClick={handleAddRssFeed} className="submit-button">Add RSS</button>
-  </div>
-</section>
-
-
-            <h4 className="font-semibold text-gray-700 mb-2">Add New Tech Stack</h4>
-            <form onSubmit={handleAddNewTechStack} className="flex gap-4 items-center">
+            <form onSubmit={handleAddNewTechStack} className="flex gap-4 items-center mb-4">
               <input
                 type="text"
-                placeholder="e.g., CentOS, Ubuntu, Cisco IOS"
+                placeholder="New Tech Name (e.g., Ubuntu)"
                 value={newTechName}
                 onChange={(e) => setNewTechName(e.target.value)}
                 className="form-input flex-grow"
@@ -545,6 +641,107 @@ const handleAddRssFeed = async () => {
                 <PlusCircle size={16} className="mr-2" /> Add Tech
               </button>
             </form>
+
+            <div className="border-t my-4"></div>
+
+            <section>
+              <div className="flex justify-between items-center mb-2">
+                <h4 className="font-semibold text-gray-700">Manage RSS Feeds for a Tech Stack</h4>
+                {selectedTechStackId && rssFeeds.length > 0 && (
+                  <button
+                    onClick={() => {
+                      setIsDeleteMode(!isDeleteMode);
+                      setFeedsToDelete(new Set());
+                    }}
+                    className="secondary-button !py-1"
+                  >
+                    {isDeleteMode ? 'Cancel' : 'Delete Feeds'}
+                  </button>
+                )}
+              </div>
+
+              <select
+                className="form-input mb-3"
+                value={selectedTechStackId}
+                onChange={(e) => {
+                  const techId = e.target.value;
+                  setSelectedTechStackId(techId);
+                  fetchRssFeeds(techId);
+                  setIsDeleteMode(false);
+                  setFeedsToDelete(new Set());
+                }}
+              >
+                <option value="">-- Select Tech To Manage Feeds --</option>
+                {techStacks.map(stack => (
+                  <option key={stack.id} value={stack.id}>{stack.name}</option>
+                ))}
+              </select>
+
+              <div className="space-y-2 mb-4 h-24 overflow-y-auto border rounded p-2 bg-gray-50">
+                {rssFeeds.length > 0 ? rssFeeds.map((feed, index) => (
+                  <li key={index} className="text-sm text-gray-600 p-1 list-none flex items-center">
+                    {isDeleteMode && (
+                      <input
+                        type="checkbox"
+                        className="mr-3 h-4 w-4"
+                        checked={feedsToDelete.has(feed.url)}
+                        onChange={(e) => handleFeedSelection(e, feed.url)}
+                      />
+                    )}
+                    <span className='truncate'>{feed.url}</span>
+                  </li>
+                )) : <p className='text-sm text-gray-400 p-2'>No feeds for this tech.</p>}
+              </div>
+
+              {isDeleteMode && feedsToDelete.size > 0 && (
+                <button onClick={handleDeleteRssFeeds} className="w-full bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 transition ease-in-out duration-150">
+                  Delete ({feedsToDelete.size}) Selected Feed(s)
+                </button>
+              )}
+
+              {!isDeleteMode && (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="https://example.com/rss"
+                    value={newRssUrl}
+                    onChange={(e) => setNewRssUrl(e.target.value)}
+                    className="form-input flex-grow"
+                  />
+                  <button onClick={handleAddRssFeed} className="add-rss-button">Add URL</button>
+                </div>
+              )}
+            </section>
+          </div>
+        </div>
+      )}
+
+      {/* <<< NEW: Edit Advisory Modal >>> */}
+      {showEditModal && editingAdvisory && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '800px' }}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="modal-title">Review & Edit Advisory</h3>
+              <button onClick={handleCloseEditModal} className="modal-close-icon"><X size={24} /></button>
+            </div>
+
+            <textarea
+              className="w-full h-80 p-3 border rounded-md font-mono text-sm"
+              value={editTextContent}
+              onChange={(e) => setEditTextContent(e.target.value)}
+            />
+
+            <div className="flex justify-end gap-4 mt-4">
+              <button onClick={handleCloseEditModal} className="secondary-button">
+                Cancel
+              </button>
+              <button onClick={() => handleUpdateAdvisory('Draft')} className="secondary-button">
+                Save as Draft
+              </button>
+              <button onClick={() => handleUpdateAdvisory('Sent')} className="submit-button">
+                <Send size={16} className='mr-2' /> Dispatch Advisory
+              </button>
+            </div>
           </div>
         </div>
       )}
