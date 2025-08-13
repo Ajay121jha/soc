@@ -1,4 +1,5 @@
 from flask import request, Flask, jsonify
+from flask_cors import CORS
 from app.auth import authenticate_user
 from app.db import get_db_connection
 from datetime import datetime, timedelta
@@ -17,8 +18,8 @@ import requests
 import certifi
 import feedparser
 from flask_mail import Mail, Message
-
-
+from io import BytesIO
+import zipfile
 
 
 
@@ -470,6 +471,30 @@ def setup_routes(app):
 
         except Exception as e:
             return jsonify({'error': str(e)}), 500
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     
     @app.route('/api/kb-search', methods=['GET'])
@@ -477,58 +502,63 @@ def setup_routes(app):
         query = request.args.get('query', '').strip()
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
- 
+
         try:
+            
+            fields = [
+                'location', 'family', 'class', 'manufacturer', 'model',
+                'serial_number', 'host_name', 'ip_address', 'criticality',
+                'eos', 'eol', 'latest_firmware_release_date', 'asset_owner',
+                'current_firmware_version', 'latest_firmware_version',
+                'end_of_support', 'integration_with_pim_tacacs', 'rac_no',
+                'rac_qr_code', 'device_position', 'device_qr', 'status'
+            ]
+
+
             if not query:
-                cursor.execute("SELECT id, entity_name, asset, itsm_ref, asset_details, status, reason, context, remarks FROM knowledge_base")
+                cursor.execute(f"SELECT id, {', '.join(fields)} FROM knowledge_base")
                 results = cursor.fetchall()
                 return jsonify(results)
- 
+
             words = query.split()
             conditions = []
             params = []
- 
+
             for word in words:
-                conditions.append(
-                    "("
-                    "CAST(id AS CHAR) LIKE %s OR "
-                    "entity_name LIKE %s OR "
-                    "asset LIKE %s OR "
-                    "itsm_ref LIKE %s OR "
-                    "asset_details LIKE %s OR "
-                    "status LIKE %s OR "
-                    "reason LIKE %s OR "
-                    "context LIKE %s OR "
-                    "remarks LIKE %s"
-                    ")"
-                )
-                for _ in range(9):
-                    params.append(f"%{word}%")
- 
+                condition = "(" + " OR ".join([f"{field} LIKE %s" for field in fields]) + ")"
+                conditions.append(condition)
+                params.extend([f"%{word}%"] * len(fields))
+
             where_clause = " AND ".join(conditions)
             sql = f"""
-                SELECT id, entity_name, asset, itsm_ref, asset_details,
-                    status, reason, context, remarks
+                SELECT id, {', '.join(fields)}
                 FROM knowledge_base
                 WHERE {where_clause}
             """
             cursor.execute(sql, params)
             results = cursor.fetchall()
             return jsonify(results)
- 
+
         finally:
             cursor.close()
             conn.close()
 
+
     
     @app.route('/api/kb_table-add', methods=['POST'])
     def add_kb_entry():
+        conn = None
+        cursor = None
         try:
             data = request.get_json()
 
             required_fields = [
-                'entity_name', 'asset', 'itsm_ref', 'asset_details',
-                'status', 'reason', 'context', 'remarks'
+                'location', 'family', 'class', 'manufacturer', 'model',
+                'serial_number', 'host_name', 'ip_address', 'criticality',
+                'eos', 'eol', 'latest_firmware_release_date', 'asset_owner',
+                'current_firmware_version', 'latest_firmware_version',
+                'end_of_support', 'integration_with_pim_tacacs', 'rack_no',
+                'rack_qr_code', 'device_position', 'device_qr', 'status'
             ]
 
             if not all(field in data and data[field] for field in required_fields):
@@ -537,24 +567,13 @@ def setup_routes(app):
             conn = get_db_connection()
             cursor = conn.cursor()
 
-            insert_query = """
+            insert_query = f"""
                 INSERT INTO knowledge_base (
-                    entity_name, asset, itsm_ref, asset_details,
-                    status, reason, context, remarks
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    {', '.join(required_fields)}
+                ) VALUES ({', '.join(['%s'] * len(required_fields))})
             """
 
-            values = (
-                data['entity_name'],
-                data['asset'],
-                data['itsm_ref'],
-                data['asset_details'],
-                data['status'],
-                data['reason'],
-                data['context'],
-                data['remarks']
-            )
-
+            values = tuple(data[field] for field in required_fields)
             cursor.execute(insert_query, values)
             conn.commit()
 
@@ -571,31 +590,40 @@ def setup_routes(app):
                 conn.close()
 
 
+
     @app.route('/api/kb_table-delete', methods=['POST'])
     def delete_entries():
+        conn = None
+        cursor = None
         try:
             data = request.get_json()
             ids = data.get('ids', [])
             if not ids:
                 return jsonify({"message": "No IDs provided"}), 400
- 
+
             conn = get_db_connection()
             cursor = conn.cursor()
             format_strings = ','.join(['%s'] * len(ids))
-            cursor.execute(f"DELETE FROM knowledge_base WHERE id IN ({format_strings})", tuple(ids))
+            query = f"DELETE FROM knowledge_base WHERE id IN ({format_strings})"
+            cursor.execute(query, tuple(ids))
             conn.commit()
- 
+
             return jsonify({"message": "Entries deleted successfully!"}), 200
- 
+
         except Exception as e:
             print("Error deleting entries:", str(e))
             return jsonify({"message": str(e)}), 500
- 
+
         finally:
-            cursor.close()
-            conn.close()
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
 
         
+    
+
     @app.route('/api/kb_table-import', methods=['POST'])
     def import_data():
         if 'file' not in request.files:
@@ -605,46 +633,82 @@ def setup_routes(app):
         if file.filename == "":
             return jsonify({"message": "No file selected"}), 400
 
+        conn = None
+        cursor = None
+
         try:
             filename = file.filename.lower()
             if filename.endswith('.csv'):
                 df = pd.read_csv(file)
-            elif filename.endswith(('.xls', '.xlsx')):
-                df = pd.read_excel(file)
+            elif filename.endswith('.xlsx'):
+                df = pd.read_excel(file, engine='openpyxl')
+            elif filename.endswith('.xls'):
+                df = pd.read_excel(file, engine='xlrd')
             else:
                 return jsonify({"message": "Unsupported file type"}), 400
 
+            # Normalize column headers
+            df.columns = (
+                df.columns.str.strip()
+                .str.lower()
+                .str.replace(' ', '_')
+                .str.replace('/', '_')
+            )
+
+            # Manual corrections for known mismatches
+            df.columns = df.columns.str.replace('rack_no', 'rac_no')
+            df.columns = df.columns.str.replace('rack_qr_code', 'rac_qr_code')
+
+            # Replace invalid values with None
+            df.replace(['Not yet declared', 'NA', 'na', 'N/A', '', ' '], None, inplace=True)
+
             required_columns = [
-                'entity_name', 'asset', 'itsm_ref', 'asset_details',
-                'status', 'reason', 'context', 'remarks'
+                'location', 'family', 'class', 'manufacturer', 'model',
+                'serial_number', 'host_name', 'ip_address', 'criticality',
+                'eos', 'eol', 'latest_firmware_release_date', 'asset_owner',
+                'current_firmware_version', 'latest_firmware_version',
+                'end_of_support', 'integration_with_pim_tacacs', 'rac_no',
+                'rac_qr_code', 'device_position', 'device_qr', 'status'
             ]
-            if not all(col in df.columns for col in required_columns):
+
+            # Fuzzy match uploaded columns to required columns
+            import difflib
+            uploaded_columns = df.columns.tolist()
+            column_mapping = {}
+            for required in required_columns:
+                match = difflib.get_close_matches(required, uploaded_columns, n=1, cutoff=0.6)
+                column_mapping[required] = match[0] if match else None
+
+            missing_mappings = [col for col, mapped in column_mapping.items() if mapped is None]
+            if missing_mappings:
                 return jsonify({
-                    "message": f"Missing required columns. Expected: {', '.join(required_columns)}"
+                    "message": f"Missing required columns or unable to match: {', '.join(missing_mappings)}"
                 }), 400
+
+            df = df.rename(columns={v: k for k, v in column_mapping.items() if v})
+
+            # Convert datetime columns to MySQL-compatible date format
+            date_columns = ['eos', 'eol', 'latest_firmware_release_date', 'end_of_support']
+            for col in date_columns:
+                if col in df.columns:
+                    df[col] = pd.to_datetime(df[col], errors='coerce').dt.strftime('%Y-%m-%d')
+                    df[col] = df[col].where(pd.notnull(df[col]), None)
+
+            # Drop extra columns not in required_columns
+            df = df[[col for col in required_columns if col in df.columns]]
 
             conn = get_db_connection()
             cursor = conn.cursor()
 
-            insert_query = """
+            insert_query = f"""
                 INSERT INTO knowledge_base (
-                entity_name, asset, itsm_ref, asset_details,
-                status, reason, context, remarks
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    {', '.join(required_columns)}
+                ) VALUES ({', '.join(['%s'] * len(required_columns))})
             """
 
             for index, row in df.iterrows():
                 try:
-                    values = (
-                        row['entity_name'],
-                        row['asset'],
-                        row['itsm_ref'],
-                        row['asset_details'],
-                        row['status'],
-                        row['reason'],
-                        row['context'],
-                        row['remarks']
-                    )
+                    values = tuple(row.get(col, None) for col in required_columns)
                     cursor.execute(insert_query, values)
                     print(f"Inserted row {index}: {values}")
                 except Exception as insert_error:
@@ -656,13 +720,60 @@ def setup_routes(app):
             return jsonify({"message": "Import successful!"}), 200
 
         except Exception as e:
-            conn.rollback()
+            if conn:
+                conn.rollback()
             print(f"Error: {str(e)}")
             return jsonify({"message": str(e)}), 500
 
         finally:
-            cursor.close()
-            conn.close()
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     
@@ -849,8 +960,6 @@ def setup_routes(app):
 
 
 
-
-
     @app.route('/api/clusters', methods=['GET'])
     def get_clusters():
         try:
@@ -909,8 +1018,6 @@ def setup_routes(app):
             return jsonify({'message': 'User deleted from cluster successfully'}), 200
         except Exception as e:
             return jsonify({'error': str(e)}), 500
-
-
 
 
 
@@ -1128,7 +1235,9 @@ def setup_routes(app):
         finally:
             conn.close()
     
-   # <<< FIXED & REFACTORED FUNCTION TO CREATE AND UPDATE A SINGLE CONSOLIDATED DRAFT >>>
+    # <<< UPDATED: This function is now simplified to remove de-duplication and keyword filtering >>>
+    # In routes.py
+
     @app.route("/api/clients/<int:client_id>/feed-items", methods=["GET"])
     def get_client_feed_items(client_id):
         conn = None
@@ -1136,7 +1245,7 @@ def setup_routes(app):
             conn = get_db_connection()
             cursor = conn.cursor(dictionary=True)
             
-            # 1. Find all RSS feed URLs and their associated tech_stack_id for the client
+            # 1. Find all RSS feed URLs for the client's tech stacks
             query = """
                 SELECT DISTINCT rf.url, rf.tech_stack_id, ts.name as tech_stack_name
                 FROM rss_feeds rf
@@ -1146,152 +1255,111 @@ def setup_routes(app):
             """
             cursor.execute(query, (client_id,))
             feeds = cursor.fetchall()
-            cursor.close()
-
-            # 2. Get all item GUIDs that have already been processed
-            cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT item_guid FROM processed_feed_items")
-            seen_items_results = cursor.fetchall()
-            seen_items_set = {item['item_guid'] for item in seen_items_results}
-            cursor.close()
             
-            # 3. Process feeds, filter for keywords, and check for newness
-            RELEVANT_KEYWORDS = [
-                'vulnerability', 'threat', 'security', 'update', 
-                'patch', 'advisory', 'cve-', 'malware', 'exploit'
-            ]
-            
-            new_items_found = []
-            new_guids_to_log = []
+            all_items_found = []
 
+            # 2. Process every feed and gather all items
             for feed in feeds:
                 try:
-                    tech_stack_id_for_feed = feed['tech_stack_id']
-                    tech_stack_name_for_feed = feed['tech_stack_name']
                     parsed_feed = feedparser.parse(feed['url'])
-
                     for entry in parsed_feed.entries:
-                        item_guid = entry.get('guid', entry.get('link'))
-                        if not item_guid or item_guid in seen_items_set:
-                            continue
-
-                        content_to_check = (entry.get("title", "") + entry.get("summary", "")).lower()
-                        if any(keyword in content_to_check for keyword in RELEVANT_KEYWORDS):
-                            feed_item_data = {
-                                "title": entry.get("title", "No Title"),
-                                "link": entry.get("link", "#"),
-                                "summary": entry.get("summary", "No summary available."),
-                                "tech_stack_id": tech_stack_id_for_feed,
-                                "tech_stack_name": tech_stack_name_for_feed
-                            }
-                            new_items_found.append(feed_item_data)
-                            new_guids_to_log.append(item_guid)
-                            seen_items_set.add(item_guid)
-
+                        feed_item_data = {
+                            "title": entry.get("title", "No Title"),
+                            "link": entry.get("link", "#"),
+                            "summary": entry.get("summary", "No summary available."),
+                            "tech_stack_id": feed['tech_stack_id'],
+                            "tech_stack_name": feed['tech_stack_name']
+                        }
+                        all_items_found.append(feed_item_data)
                 except Exception as e:
                     print(f"Error fetching or parsing feed {feed['url']}: {e}")
 
-            if not new_items_found:
-                return jsonify([])
+            # 3. Create or update a draft advisory with the fetched content
+            if all_items_found:
+                # Group items by the technology they belong to
+                items_by_tech = {}
+                for item in all_items_found:
+                    tech_id = item['tech_stack_id']
+                    if tech_id not in items_by_tech:
+                        items_by_tech[tech_id] = []
+                    items_by_tech[tech_id].append(item)
 
-            # 4. Log the new GUIDs so we don't process them again
-            if new_guids_to_log:
-                cursor = conn.cursor()
-                insert_guid_query = "INSERT INTO processed_feed_items (item_guid) VALUES (%s)"
-                guid_values_to_insert = [(guid,) for guid in new_guids_to_log]
-                cursor.executemany(insert_guid_query, guid_values_to_insert)
-                cursor.close()
-                conn.commit()
+                # Get client name once to avoid querying in a loop
+                cursor.execute("SELECT name FROM clients WHERE id = %s", (client_id,))
+                client_result = cursor.fetchone()
+                client_name = client_result['name'] if client_result else 'Unknown Client'
 
-            # 5. Group new items by tech_stack_id to create consolidated drafts
-            items_by_tech = {}
-            for item in new_items_found:
-                tech_id = item['tech_stack_id']
-                if tech_id not in items_by_tech:
-                    items_by_tech[tech_id] = []
-                items_by_tech[tech_id].append(item)
-
-            for tech_id, items_list in items_by_tech.items():
-                # For each tech group, find the one client we're operating on
-                tech_stack_name = items_list[0]['tech_stack_name']
-
-                # Format the new information block from all new feed items in this group
-                new_findings_block = ""
-                for item in items_list:
-                    new_findings_block += f"""
----
-**New Finding:** {item['title']}
-**Source:** {item['link']}
-**Summary:** {item['summary']}
-"""
-                
-                cursor = conn.cursor(dictionary=True)
-                # Check for an existing draft for THIS client and THIS tech stack
-                cursor.execute(
-                    "SELECT id, advisory_content FROM advisories WHERE client_id = %s AND service_or_os = %s AND status = 'Draft'",
-                    (client_id, tech_stack_name)
-                )
-                existing_draft = cursor.fetchone()
-
-                if existing_draft:
-                    # Append new findings to the existing draft
-                    updated_content = existing_draft['advisory_content'] + new_findings_block
-                    cursor.execute(
-                        "UPDATE advisories SET advisory_content = %s, timestamp = NOW() WHERE id = %s",
-                        (updated_content, existing_draft['id'])
-                    )
-                else:
-                    # Create a new consolidated draft
-                    cursor.execute("SELECT name FROM clients WHERE id = %s", (client_id,))
-                    client_name = cursor.fetchone()['name']
-                    initial_content = f"""**Automated Advisory Draft**
-
-**Topic:** Potential Issues for {tech_stack_name}
-**Date Generated:** {datetime.now().strftime('%d/%m/%Y')}
-
-This is a consolidated summary of new findings related to your technology stack. Please review, edit, and dispatch.
-{new_findings_block}
----
-*This is an automated draft. Please review for accuracy.*
-"""
+                # Loop through each technology that had feed items
+                for tech_id, items_list in items_by_tech.items():
+                    tech_stack_name = items_list[0]['tech_stack_name']
+                    
+                    # Create a consolidated block of all findings for this tech stack
+                    findings_block = f"Latest feed contents from {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}:\n\n"
+                    for item in items_list:
+                        findings_block += f"--- \nTitle: {item['title']}\nSource: {item['link']}\n\n"
+                    
+                    # --- NEW LOGIC STARTS HERE ---
+                    # A. Check for an existing draft from today for this client and tech
                     cursor.execute(
                         """
-                        INSERT INTO advisories (client_id, client_name, service_or_os, update_type, description, advisory_content, status, timestamp)
-                        VALUES (%s, %s, %s, %s, %s, %s, 'Draft', NOW())
+                        SELECT id FROM advisories
+                        WHERE client_id = %s
+                        AND service_or_os = %s
+                        AND update_type = 'Automated Feed Snapshot'
+                        AND status = 'Draft'
+                        AND DATE(timestamp) = CURDATE()
+                        LIMIT 1
                         """,
-                        (
-                            client_id, client_name, tech_stack_name,
-                            "Automated Consolidated Alert",
-                            f"Multiple new findings for {tech_stack_name}",
-                            initial_content
-                        )
+                        (client_id, tech_stack_name)
                     )
+                    existing_draft = cursor.fetchone()
+                    
+                    # B. If a draft exists, UPDATE it. Otherwise, INSERT a new one.
+                    if existing_draft:
+                        # An existing draft was found, so we UPDATE it
+                        update_query = """
+                            UPDATE advisories
+                            SET technical_analysis = %s, timestamp = NOW()
+                            WHERE id = %s
+                        """
+                        cursor.execute(update_query, (findings_block, existing_draft['id']))
+                    else:
+                        # No draft found for today, so we INSERT a new one
+                        description = f"Automated feed snapshot for {tech_stack_name}. Contains all current items from assigned feeds."
+                        insert_query = """
+                            INSERT INTO advisories (client_id, client_name, service_or_os, update_type, description, technical_analysis, status, timestamp)
+                            VALUES (%s, %s, %s, %s, %s, %s, 'Draft', NOW())
+                        """
+                        cursor.execute(insert_query, (client_id, client_name, tech_stack_name, "Automated Feed Snapshot", description, findings_block))
+                
                 conn.commit()
-                cursor.close()
 
-            return jsonify(new_items_found)
+            # Return all items found so the frontend can display them
+            return jsonify(all_items_found)
 
         except Exception as e:
-            # Print the full traceback to the console for detailed debugging
             import traceback
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
         finally:
             if conn and conn.is_connected():
+                cursor.close()
                 conn.close()
-        
+    
     @app.route("/api/advisories/bulk", methods=['POST'])
     def create_bulk_advisory():
-        """
-        Creates and dispatches advisories manually. Status is set to 'Sent'.
-        """
         data = request.get_json()
         tech_stack_id = data.get("techStackId")
         version_pattern = data.get("version", "").replace('*', '%')
+        
         update_type = data.get("updateType")
         description = data.get("description")
-        impact = data.get("impact", "Not specified.")
-        recommended_actions = data.get("recommendedActions", "Review and apply updates as per your internal policies.")
+        vulnerability_details = data.get("vulnerability_details")
+        technical_analysis = data.get("technical_analysis")
+        impact_details = data.get("impact_details")
+        mitigation_strategies = data.get("mitigation_strategies")
+        detection_response = data.get("detection_response")
+        recommendations = data.get("recommendations")
 
         if not all([tech_stack_id, version_pattern, update_type, description]):
             return jsonify({"error": "Missing required advisory fields"}), 400
@@ -1314,33 +1382,18 @@ This is a consolidated summary of new findings related to your technology stack.
             return jsonify({"message": "No clients found matching the specified technology and version."}), 200
 
         for client in affected_clients:
-            advisory_content = f"""**Cybersecurity Advisory: {update_type} for {client['tech_stack_name']}**
-
-**Client:** {client['client_name']}
-**Date:** {datetime.now().strftime('%d/%m/%Y')}
-
-**1. Overview**
-This advisory provides critical information regarding a recent {update_type} for your {client['tech_stack_name']} environment (Version Pattern: {data.get("version")}).
-
-**2. Description**
-{description}
-
-**3. Potential Impact**
-{impact}
-
-**4. Recommended Actions**
-{recommended_actions}
-
----
-*This is a manually dispatched advisory from the SOC Advisory System.*
-"""
             insert_query = """
-                INSERT INTO advisories (client_id, client_name, service_or_os, update_type, description, impact, recommended_actions, advisory_content, status, timestamp)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'Sent', NOW())
+                INSERT INTO advisories (
+                    client_id, client_name, service_or_os, update_type, description,
+                    vulnerability_details, technical_analysis, impact_details,
+                    mitigation_strategies, detection_response, recommendations,
+                    status, timestamp
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             """
             cursor.execute(insert_query, (
                 client['client_id'], client['client_name'], client['tech_stack_name'],
-                update_type, description, impact, recommended_actions, advisory_content
+                update_type, description, vulnerability_details, technical_analysis,
+                impact_details, mitigation_strategies, detection_response, recommendations, 'Sent'
             ))
 
         conn.commit()
@@ -1350,42 +1403,48 @@ This advisory provides critical information regarding a recent {update_type} for
 
     @app.route('/api/advisories', methods=['GET'])
     def get_advisories():
-        """Fetches all advisories for the main feed, including status."""
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT id, client_id, client_name, advisory_content, status, timestamp FROM advisories ORDER BY timestamp DESC")
+        cursor.execute("""
+            SELECT 
+                id, client_id, client_name, service_or_os, update_type, description,
+                vulnerability_details, technical_analysis, impact_details,
+                mitigation_strategies, detection_response, recommendations,
+                status, timestamp
+            FROM advisories
+            ORDER BY timestamp DESC
+        """)
         data = cursor.fetchall()
         conn.close()
         return jsonify(data)
 
+
     @app.route('/api/advisories/<int:advisory_id>', methods=['PUT'])
     def update_advisory(advisory_id):
-        """Updates the content and/or status of an advisory."""
         data = request.get_json()
-        new_content = data.get('advisory_content')
-        new_status = data.get('status')
-
-        if not new_content and not new_status:
-            return jsonify({'error': 'No content or status provided for update'}), 400
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
         
-        fields_to_update = []
+        update_fields = [
+            'description', 'vulnerability_details', 'technical_analysis',
+            'impact_details', 'mitigation_strategies', 'detection_response',
+            'recommendations', 'status'
+        ]
+        
+        fields_to_update_sql = []
         params = []
-        if new_content:
-            fields_to_update.append("advisory_content = %s")
-            params.append(new_content)
-        if new_status in ['Draft', 'Sent']:
-            fields_to_update.append("status = %s")
-            params.append(new_status)
         
-        if not fields_to_update:
-            return jsonify({'error': 'Invalid fields for update'}), 400
+        for field in update_fields:
+            if field in data:
+                fields_to_update_sql.append(f"{field} = %s")
+                params.append(data[field])
+
+        if not fields_to_update_sql:
+            return jsonify({'error': 'No fields provided for update'}), 400
 
         params.append(advisory_id)
-        query = f"UPDATE advisories SET {', '.join(fields_to_update)}, timestamp = NOW() WHERE id = %s"
+        query = f"UPDATE advisories SET {', '.join(fields_to_update_sql)}, timestamp = NOW() WHERE id = %s"
         
+        conn = get_db_connection()
+        cursor = conn.cursor()
         cursor.execute(query, tuple(params))
         conn.commit()
         conn.close()
@@ -1395,7 +1454,6 @@ This advisory provides critical information regarding a recent {update_type} for
     @app.route('/api/rss-feeds', methods=['GET', 'POST', 'DELETE'])
     def manage_rss_feeds():
         conn = get_db_connection()
-        # Use dictionary=True for GET, but not for others to avoid issues
         cursor = conn.cursor(dictionary=True if request.method == 'GET' else False)
 
         if request.method == 'GET':
@@ -1420,14 +1478,12 @@ This advisory provides critical information regarding a recent {update_type} for
                 conn.commit()
                 return jsonify({'message': 'RSS feed added successfully'})
             except mysql.connector.Error as err:
-                 # Check for duplicate entry error
                 if err.errno == 1062:
                     return jsonify({"error": "This RSS feed URL already exists for this tech stack."}), 409
                 return jsonify({"error": str(err)}), 500
             finally:
                 conn.close()
 
-        # <<< NEW: Handle DELETE requests >>>
         elif request.method == 'DELETE':
             data = request.get_json()
             tech_stack_id = data.get('tech_stack_id')
@@ -1438,17 +1494,13 @@ This advisory provides critical information regarding a recent {update_type} for
                 return jsonify({'error': 'A tech_stack_id and a list of urls are required.'}), 400
             
             try:
-                # Prepare query with placeholders for the IN clause
                 placeholders = ', '.join(['%s'] * len(urls_to_delete))
                 query = f"DELETE FROM rss_feeds WHERE tech_stack_id = %s AND url IN ({placeholders})"
-                
-                # Combine parameters into a single tuple
                 params = (tech_stack_id,) + tuple(urls_to_delete)
                 
                 cursor.execute(query, params)
                 conn.commit()
                 
-                # Check how many rows were deleted
                 deleted_count = cursor.rowcount
                 return jsonify({'message': f'{deleted_count} RSS feed(s) deleted successfully.'}), 200
             except Exception as e:
@@ -1494,45 +1546,26 @@ This advisory provides critical information regarding a recent {update_type} for
             conn = get_db_connection()
             cursor = conn.cursor(dictionary=True)
 
-            # 1. Fetch all RSS URLs for the client
-            rss_query = "SELECT rss_url FROM client_rss_feeds WHERE client_id = %s"
-            cursor.execute(rss_query, (client_id,))
-            rss_urls = [row['rss_url'] for row in cursor.fetchall()]
+            query = """
+                SELECT 
+                    id, client_id, client_name, service_or_os, update_type, description,
+                    vulnerability_details, technical_analysis, impact_details,
+                    mitigation_strategies, detection_response, recommendations,
+                    status, timestamp
+                FROM advisories
+                WHERE client_id = %s
+                ORDER BY timestamp DESC
+            """
+            cursor.execute(query, (client_id,))
+            advisories = cursor.fetchall()
 
-            combined_advisory_text = ""
-            advisory_entries = []
-
-            # 2. Iterate through each URL and combine the feed content
-            for url in rss_urls:
-                feed = feedparser.parse(url)
-                for entry in feed.entries:
-                    advisory_entries.append({
-                        "title": entry.title,
-                        "summary": getattr(entry, 'summary', getattr(entry, 'description', '')),
-                        "link": entry.link
-                    })
-            
-            # You can now format this combined data however you like.
-            # For example, create a single large advisory text.
-            for entry in advisory_entries:
-                combined_advisory_text += f"Title: {entry['title']}\n"
-                combined_advisory_text += f"Summary: {entry['summary']}\n"
-                combined_advisory_text += "-----\n"
-
-            # 3. Create a single advisory object
-            single_advisory = {
-                "title": f"Combined Advisory for Client ID {client_id}",
-                "content": combined_advisory_text,
-                "source_feeds": [entry["title"] for entry in advisory_entries]
-            }
-
-            return jsonify([single_advisory]) # Return as a list with one item
-        
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-        finally:
             cursor.close()
             conn.close()
+
+            return jsonify(advisories), 200
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
 
 
 

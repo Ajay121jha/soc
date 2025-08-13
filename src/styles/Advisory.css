@@ -417,3 +417,58 @@ body {
     background-color: #dc2626; /* A slightly darker red for hover state */
     box-shadow: var(--shadow-lg);
 }
+
+
+
+
+/* --- Standard CSS Rules (Immediate Fix) --- */
+
+.section-title {
+  font-size: 1.125rem; /* text-lg */
+  font-weight: 700; /* font-bold */
+  color: rgb(31 41 55); /* text-gray-800 */
+  border-bottom-width: 2px; /* border-b-2 */
+  border-color: rgb(37 99 235); /* border-blue-600 */
+  padding-bottom: 0.25rem; /* pb-1 */
+  margin-bottom: 0.75rem; /* mb-3 */
+}
+
+.section-content {
+  font-size: 0.875rem; /* text-sm */
+  color: rgb(55 65 81); /* text-gray-700 */
+}
+
+.advisory-card {
+  background-color: #fff; /* bg-white */
+  padding: 1rem; /* p-4 */
+  border-radius: 0.5rem; /* rounded-lg */
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); /* shadow-md */
+  border-width: 1px; /* border */
+  border-color: rgb(229 231 235); /* border-gray-200 */
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+.advisory-card:hover {
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); /* hover:shadow-lg */
+  border-color: rgb(59 130 246); /* hover:border-blue-500 */
+}
+
+.draft-badge {
+  background-color: rgb(254 243 199); /* bg-yellow-100 */
+  color: rgb(180 83 9); /* text-yellow-800 */
+  font-size: 0.75rem; /* text-xs */
+  font-weight: 600; /* font-semibold */
+  padding-left: 0.625rem; /* px-2.5 */
+  padding-right: 0.625rem;
+  padding-top: 0.125rem; /* py-0.5 */
+  padding-bottom: 0.125rem;
+  border-radius: 9999px; /* rounded-full */
+}
+
+/* --- You can keep your existing styles below if you have any --- */
