@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Search, Plus, Trash2 } from "lucide-react";
 import "../styles/KnowledgeBase.css";
- 
+
 const KnowledgeBase = () => {
   const [query, setQuery] = useState("");
   const [data, setData] = useState([]);
@@ -12,24 +12,37 @@ const KnowledgeBase = () => {
   const [sourceType, setSourceType] = useState("Local");
   const [showCheckboxes, setShowCheckboxes] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
- 
   const [newEntry, setNewEntry] = useState({
-    entity_name: "",
-    asset: "",
-    itsm_ref: "",
-    asset_details: "",
-    status: "",
-    reason: "",
-    context: "",
-    remarks: "",
+    location: "",
+    family: "",
+    class: "",
+    manufacturer: "",
+    model: "",
+    serial_number: "",
+    host_name: "",
+    ip_address: "",
+    criticality: "",
+    eos: "",
+    eol: "",
+    latest_firmware_release_date: "",
+    asset_owner: "",
+    current_firmware_version: "",
+    latest_firmware_version: "",
+    end_of_support: "",
+    integration_with_pim_tacacs: "",
+    rac_no: "",           // ✅ corrected
+    rac_qr_code: "",      // ✅ corrected
+    device_position: "",
+    device_qr: "",
+    status: ""
   });
- 
+
   const cache = useRef(new Map());
- 
+
   useEffect(() => {
     fetchData();
   }, []);
- 
+
   useEffect(() => {
     const delayDebounce = setTimeout(() => {
       if (query.trim() !== "") {
@@ -38,7 +51,7 @@ const KnowledgeBase = () => {
     }, 500);
     return () => clearTimeout(delayDebounce);
   }, [query]);
- 
+
   const fetchData = async () => {
     try {
       const res = await fetch("http://localhost:5000/api/kb-search");
@@ -49,7 +62,7 @@ const KnowledgeBase = () => {
       console.error("Error fetching data:", error);
     }
   };
- 
+
   const handleSearch = async () => {
     const cacheKey = query.trim().toLowerCase();
     if (cache.current.has(cacheKey)) {
@@ -69,19 +82,18 @@ const KnowledgeBase = () => {
     setShowingSearch(true);
     setCurrentPage(1);
   };
- 
+
   const handleGoBack = () => {
     setQuery("");
     fetchData();
     setShowingSearch(false);
   };
- 
+
   const handleImport = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const formData = new FormData();
     formData.append("file", file);
- 
     try {
       const res = await fetch("http://localhost:5000/api/kb_table-import", {
         method: "POST",
@@ -100,7 +112,7 @@ const KnowledgeBase = () => {
     }
     e.target.value = "";
   };
- 
+
   const handleManualSubmit = async () => {
     try {
       const res = await fetch("http://localhost:5000/api/kb_table-add", {
@@ -114,14 +126,28 @@ const KnowledgeBase = () => {
         alert("Entry added successfully!");
         setShowForm(false);
         setNewEntry({
-          entity_name: "",
-          asset: "",
-          itsm_ref: "",
-          asset_details: "",
-          status: "Allowed",
-          reason: "",
-          context: "",
-          remarks: "",
+          location: "",
+          family: "",
+          class: "",
+          manufacturer: "",
+          model: "",
+          serial_number: "",
+          host_name: "",
+          ip_address: "",
+          criticality: "",
+          eos: "",
+          eol: "",
+          latest_firmware_release_date: "",
+          asset_owner: "",
+          current_firmware_version: "",
+          latest_firmware_version: "",
+          end_of_support: "",
+          integration_with_pim_tacacs: "",
+          rac_no: "",
+          rac_qr_code: "",
+          device_position: "",
+          device_qr: "",
+          status: ""
         });
         fetchData();
       } else {
@@ -131,28 +157,26 @@ const KnowledgeBase = () => {
       console.error("Add error:", error);
     }
   };
- 
+
   const handleKeyDown = (e) => {
     if (e.key === "Enter") {
       handleSearch();
     }
   };
- 
+
   const toggleCheckbox = (id) => {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     );
   };
- 
+
   const handleDelete = async () => {
     if (selectedIds.length === 0) {
       alert("No entries selected.");
       return;
     }
- 
     const confirmDelete = window.confirm("Are you sure you want to delete the selected entries?");
     if (!confirmDelete) return;
- 
     try {
       const res = await fetch("http://localhost:5000/api/kb_table-delete", {
         method: "POST",
@@ -161,20 +185,15 @@ const KnowledgeBase = () => {
         },
         body: JSON.stringify({ ids: selectedIds }),
       });
- 
       const result = await res.json();
       if (res.ok) {
         alert("Entries deleted successfully!");
- 
         const updatedRes = await fetch("http://localhost:5000/api/kb-search");
         const updatedData = await updatedRes.json();
- 
         setData(updatedData);
- 
         const minDeletedId = Math.min(...selectedIds);
         const newPage = Math.ceil(minDeletedId / itemsPerPage);
         setCurrentPage(newPage);
- 
         setSelectedIds([]);
         setShowCheckboxes(false);
       } else {
@@ -185,12 +204,12 @@ const KnowledgeBase = () => {
       alert("Delete failed due to a network error.");
     }
   };
- 
+
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentItems = data.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(data.length / itemsPerPage);
- 
+
   return (
     <div className="kb-container">
       <div className="kb-card">
@@ -206,20 +225,14 @@ const KnowledgeBase = () => {
           <button className="kb-button" onClick={handleSearch}>
             <Search size={16} /> Search
           </button>
- 
           <div className="dropdown">
-            <button className="kb-button dropdown-toggle">
-              {sourceType}
-            </button>
+            <button className="kb-button dropdown-toggle">{sourceType}</button>
             <div className="dropdown-menu">
               <div onClick={() => setSourceType("Local")}>Local</div>
               <div onClick={() => setSourceType("ITSM API")}>ITSM API</div>
             </div>
           </div>
- 
-          <label htmlFor="import-file" className="kb-imp">
-            Import Excel
-          </label>
+          <label htmlFor="import-file" className="kb-imp">Import Excel</label>
           <input
             type="file"
             id="import-file"
@@ -239,7 +252,7 @@ const KnowledgeBase = () => {
             </button>
           )}
         </div>
- 
+
         {showForm && (
           <div className="modal-overlay">
             <div className="modal-form">
@@ -248,7 +261,7 @@ const KnowledgeBase = () => {
                 <input
                   key={key}
                   type="text"
-                  placeholder={key.replace("_", " ")}
+                  placeholder={key.replace(/_/g, " ")}
                   value={newEntry[key]}
                   onChange={(e) =>
                     setNewEntry({ ...newEntry, [key]: e.target.value })
@@ -257,38 +270,28 @@ const KnowledgeBase = () => {
                 />
               ))}
               <div className="modal-buttons">
-                <button className="kb-button" onClick={handleManualSubmit}>
-                  Submit
-                </button>
-                <button
-                  className="kb-button cancel"
-                  onClick={() => setShowForm(false)}
-                >
-                  Cancel
-                </button>
+                <button className="kb-button" onClick={handleManualSubmit}>Submit</button>
+                <button className="kb-button cancel" onClick={() => setShowForm(false)}>Cancel</button>
               </div>
             </div>
           </div>
         )}
- 
+
         <table className="kb-table">
           <thead>
             <tr>
               {showCheckboxes && <th>Select</th>}
-              <th>ID</th>
-              <th>Entity Name</th>
-              <th>Asset</th>
-              <th>ITSM Ref</th>
-              <th>Asset Details</th>
-              <th>Status</th>
-              <th>Reason</th>
-              <th>Context</th>
-              <th>Remarks</th>
+              <th>S.NO</th>
+              {Object.keys(newEntry).map((key) => (
+                <th key={key}>
+                  {key.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {currentItems.length > 0 ? (
-              currentItems.map((item,index) => (
+              currentItems.map((item, index) => (
                 <tr key={item.id}>
                   {showCheckboxes && (
                     <td>
@@ -300,24 +303,19 @@ const KnowledgeBase = () => {
                     </td>
                   )}
                   <td>{indexOfFirstItem + index + 1}</td>
-                  <td>{item.entity_name}</td>
-                  <td>{item.asset}</td>
-                  <td>{item.itsm_ref}</td>
-                  <td>{item.asset_details}</td>
-                  <td>{item.status}</td>
-                  <td>{item.reason}</td>
-                  <td>{item.context}</td>
-                  <td>{item.remarks}</td>
+                  {Object.keys(newEntry).map((key) => (
+                    <td key={key}>{item[key]}</td>
+                  ))}
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan="10">No results found</td>
+                <td colSpan={Object.keys(newEntry).length + (showCheckboxes ? 2 : 1)}>No results found</td>
               </tr>
             )}
           </tbody>
         </table>
- 
+
         {data.length > itemsPerPage && (
           <div className="pagination">
             <button
@@ -332,16 +330,14 @@ const KnowledgeBase = () => {
             </span>
             <button
               className="kb-button"
-              onClick={() =>
-                setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-              }
+              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
               disabled={currentPage === totalPages}
             >
               Next →
             </button>
           </div>
         )}
- 
+
         {showingSearch && (
           <button className="kb-button kb-back-button" onClick={handleGoBack}>
             ← Back to All Data
@@ -351,5 +347,5 @@ const KnowledgeBase = () => {
     </div>
   );
 };
- 
+
 export default KnowledgeBase;
