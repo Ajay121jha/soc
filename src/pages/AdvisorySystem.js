@@ -103,31 +103,56 @@ export default function AdvisorySystem() {
 
   useEffect(() => {
     if (selectedClientId) {
-        setIsLoading(true);
-        const fetchAllData = async () => {
+      setIsLoading(true);
+      const fetchAllData = async () => {
+        await fetchAdvisories();
+        setIsRssLoading(true);
+        try {
+          const response = await fetch(`http://localhost:5000/api/clients/${selectedClientId}/feed-items`);
+          const rssData = await response.json();
+
+          console.log("RSS items fetched:", rssData);
+
+          setRssItems(Array.isArray(rssData) ? rssData.map(item => ({ ...item, summary: stripHtml(item.summary) })) : []);
+          if (rssData.length > 0) {
             await fetchAdvisories();
-            setIsRssLoading(true);
-            try {
-                const response = await fetch(`http://localhost:5000/api/clients/${selectedClientId}/feed-items`);
-                const rssData = await response.json();
-                setRssItems(Array.isArray(rssData) ? rssData.map(item => ({ ...item, summary: stripHtml(item.summary) })) : []);
-                if (rssData.length > 0) {
-                    await fetchAdvisories();
-                }
-            } catch (error) {
-                console.error("Error fetching RSS items:", error);
-                setRssItems([]);
-            } finally {
-                setIsRssLoading(false);
-                setIsLoading(false);
-            }
-        };
-        fetchAllData();
+          }
+        } catch (error) {
+          console.error("Error fetching RSS items:", error);
+          setRssItems([]);
+        } finally {
+          setIsRssLoading(false);
+          setIsLoading(false);
+        }
+      };
+      fetchAllData();
     } else {
-        setAdvisories([]);
-        setRssItems([]);
+      setAdvisories([]);
+      setRssItems([]);
     }
   }, [selectedClientId, fetchAdvisories]);
+
+
+
+  const sendAdvisoryEmail = async (advisory) => {
+    try {
+      const response = await fetch('http://localhost:5000/api/dispatch-advisory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: advisory.update_type + ' for ' + advisory.service_or_os,
+          content: advisory.description + '\n\n' + advisory.technical_analysis,
+          clientTechMapId: advisory.client_tech_map_id // make sure this ID is available
+        })
+      });
+
+      const result = await response.json();
+      alert(result.message || result.error);
+    } catch (error) {
+      alert("Failed to send advisory: " + error.message);
+    }
+  };
+
 
   const openClientConfigModal = useCallback(async (client) => {
     setConfiguringClient(client);
@@ -141,7 +166,7 @@ export default function AdvisorySystem() {
       setClientTechDetails([]);
     }
   }, []);
-  
+
   const handleOpenEditModal = (advisory, e) => {
     e.stopPropagation();
     setEditingAdvisory(advisory);
@@ -154,10 +179,10 @@ export default function AdvisorySystem() {
     setEditingAdvisory(null);
     setEditFormState(null);
   };
-  
+
   const handleEditFormChange = (e) => {
     const { name, value } = e.target;
-    setEditFormState(prev => ({...prev, [name]: value}));
+    setEditFormState(prev => ({ ...prev, [name]: value }));
   };
 
   const handleUpdateAdvisory = async (newStatus) => {
@@ -172,6 +197,8 @@ export default function AdvisorySystem() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || `Failed to update advisory`);
       alert(`Advisory successfully ${newStatus === 'Sent' ? 'dispatched' : 'saved'}.`);
+      await sendAdvisoryEmail(editingAdvisory);
+
       handleCloseEditModal();
       fetchAdvisories();
     } catch (error) {
@@ -348,7 +375,7 @@ export default function AdvisorySystem() {
       alert(error.message);
     }
   };
-  
+
   const handleDeleteClientTech = async (clientTechMapId) => {
     if (!window.confirm("Are you sure you want to delete this tech stack assignment?")) {
       return;
@@ -370,91 +397,135 @@ export default function AdvisorySystem() {
     }
   };
 
+
+
+
+
+
+
+  const handleDeleteAdvisory = async (advisoryId) => {
+    if (!window.confirm("Are you sure you want to delete this advisory?")) return;
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/advisories/${advisoryId}`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to delete advisory");
+      alert("Advisory deleted successfully.");
+      fetchAdvisories(); // Refresh the list
+    } catch (error) {
+      console.error("Error deleting advisory:", error);
+      alert(error.message);
+    }
+  };
+
+
+
+
+
+
+
+
+
+
+
+
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(clientSearchTerm.toLowerCase())
   );
   const selectedClientName = clients.find(c => c.id === Number(selectedClientId))?.name || '';
-  
+
   return (
     <div className="flex h-screen bg-gray-100 font-inter text-gray-800">
       {/* Left Sidebar */}
       <aside className="w-96 bg-white p-5 shadow-lg flex flex-col">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4 flex-shrink-0">SOC Advisory System</h2>
-        
-        <div className="flex border-b mb-4 flex-shrink-0">
-            <button className={`tab-button ${activeTab === 'clients' ? 'active' : ''}`} onClick={() => setActiveTab('clients')}>
-                <Users size={16} className="mr-2"/> Clients
-            </button>
-            <button className={`tab-button ${activeTab === 'create' ? 'active' : ''}`} onClick={() => setActiveTab('create')}>
-                <FilePlus size={16} className="mr-2"/> Create Advisory
-            </button>
+        <h2 className="text-2xl soc font-bold text-gray-800 mb-4 flex-shrink-0">Advisory System</h2>
+
+        <div className="flex ajay border-b mb-4 flex-shrink-0">
+          <button className={`tab-button ${activeTab === 'clients' ? 'active' : ''}`} onClick={() => setActiveTab('clients')}>
+            <Users size={16} className="mr-2" /> Clients
+          </button>
+          <button className={`tab-button ${activeTab === 'create' ? 'active' : ''}`} onClick={() => setActiveTab('create')}>
+            <FilePlus size={16} className="mr-2" /> Create Advisory
+          </button>
+        </div>
+        <div className="relative mb-3">
+          {/* <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" /> */}
+          <input type="text" placeholder="Search clients..." value={clientSearchTerm} onChange={(e) => setClientSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
         </div>
 
         <div className="flex-grow overflow-y-auto">
-            {activeTab === 'clients' && (
-                <div className="flex flex-col h-full">
-                    <h3 className="text-lg font-semibold text-gray-700 mb-2">Clients</h3>
-                    <div className="relative mb-3">
-                        <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                        <input type="text" placeholder="Search clients..." value={clientSearchTerm} onChange={(e) => setClientSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
-                    </div>
-                    <div className="flex-grow overflow-y-auto border rounded-lg p-2 bg-gray-50">
-                        {filteredClients.map(client => (
-                            <div key={client.id} className={`client-list-item ${selectedClientId === client.id ? 'selected' : ''}`} onClick={() => setSelectedClientId(client.id)}>
-                                <span className="client-name">{client.name}</span>
-                                <button onClick={(e) => { e.stopPropagation(); openClientConfigModal(client); }} className="client-config-button" title={`Configure ${client.name}`}>
-                                    <Settings size={16} />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                     <button onClick={() => setShowTechModal(true)} className="secondary-button mt-4" title="Manage Tech Stacks">
-                        <Tags size={16} className="mr-2"/> Manage Tech Stacks
-                    </button>
-                </div>
-            )}
+          {activeTab === 'clients' && (
+            <div className="flex flex-col h-full">
+              {/* <h3 className="text-lg font-semibold text-gray-700 mb-2">Clients</h3> */}
 
-            {activeTab === 'create' && (
-                <div>
-                    <div className="flex justify-between items-center mb-3">
-                        <h3 className="text-lg font-semibold text-gray-700">Create Manual Advisory</h3>
-                    </div>
-                    <form onSubmit={handleSubmitAdvisory} className="space-y-3">
-                        <select name="techStackId" value={newAdvisory.techStackId} onChange={handleInputChange} required className="form-input">
-                            <option value="">-- Select Tech Stack --</option>
-                            {techStacks.map(stack => <option key={stack.id} value={stack.id}>{stack.name}</option>)}
-                        </select>
-                        <input type="text" name="version" placeholder="Version (e.g., 22H2, 11.x, *)" value={newAdvisory.version} onChange={handleInputChange} required className="form-input" />
-                        <select name="updateType" value={newAdvisory.updateType} onChange={handleInputChange} required className="form-input">
-                            <option value="">-- Select Update Type --</option>
-                            <option value="Security Patch">Security Patch</option>
-                            <option value="Vulnerability Alert">Vulnerability Alert</option>
-                            <option value="Informational">Informational</option>
-                        </select>
-                        <label className="form-label">Summary</label>
-                        <textarea name="description" placeholder="A brief summary of the advisory..." value={newAdvisory.description} onChange={handleInputChange} rows="3" required className="form-input"></textarea>
-                        <label className="form-label">Vulnerability Details</label>
-                        <textarea name="vulnerability_details" placeholder="Details about the vulnerability (one per line)..." value={newAdvisory.vulnerability_details} onChange={handleInputChange} rows="3" className="form-input"></textarea>
-                        <label className="form-label">Technical Analysis</label>
-                        <textarea name="technical_analysis" placeholder="Technical analysis of the threat..." value={newAdvisory.technical_analysis} onChange={handleInputChange} rows="4" className="form-input"></textarea>
-                        <label className="form-label">Impact</label>
-                        <textarea name="impact_details" placeholder="Potential impact (one per line)..." value={newAdvisory.impact_details} onChange={handleInputChange} rows="3" className="form-input"></textarea>
-                        <label className="form-label">Mitigation Strategies</label>
-                        <textarea name="mitigation_strategies" placeholder="Mitigation steps (one per line)..." value={newAdvisory.mitigation_strategies} onChange={handleInputChange} rows="3" className="form-input"></textarea>
-                        <label className="form-label">Detection and Response</label>
-                        <textarea name="detection_response" placeholder="Detection methods (one per line)..." value={newAdvisory.detection_response} onChange={handleInputChange} rows="3" className="form-input"></textarea>
-                        <label className="form-label">Recommendations</label>
-                        <textarea name="recommendations" placeholder="Further recommendations (one per line)..." value={newAdvisory.recommendations} onChange={handleInputChange} rows="3" className="form-input"></textarea>
-                        <button type="submit" className="submit-button w-full mt-4" disabled={isLoading}><Send size={18} className="inline-block mr-2" /> Dispatch Manually</button>
-                    </form>
-                </div>
-            )}
+              <div className="flex-grow overflow-y-auto border rounded-lg p-2 bg-gray-50">
+                {filteredClients.map(client => (
+                  <div key={client.id} className={`client-list-item ${selectedClientId === client.id ? 'selected' : ''}`} onClick={() => setSelectedClientId(client.id)}>
+                    <span className="client-name">{client.name}</span>
+                    <button onClick={(e) => { e.stopPropagation(); openClientConfigModal(client); }} className="client-config-button" title={`Configure ${client.name}`}>
+                      <Settings size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => setShowTechModal(true)} className="secondary-button mt-4" title="Manage Tech Stacks">
+                <Tags size={16} className="mr-2" /> Manage Tech Stacks
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'create' && (
+            <div>
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-lg font-semibold text-gray-700">Create Manual Advisory</h3>
+              </div>
+              <form onSubmit={handleSubmitAdvisory} className="space-y-3">
+                <select name="techStackId" value={newAdvisory.techStackId} onChange={handleInputChange} required className="form-input">
+                  <option value="">-- Select Tech Stack --</option>
+                  {techStacks.map(stack => <option key={stack.id} value={stack.id}>{stack.name}</option>)}
+                </select>
+                <input type="text" name="version" placeholder="Version (e.g., 22H2, 11.x, *)" value={newAdvisory.version} onChange={handleInputChange} required className="form-input" />
+                <select name="updateType" value={newAdvisory.updateType} onChange={handleInputChange} required className="form-input">
+                  <option value="">-- Select Update Type --</option>
+                  <option value="Security Patch">Security Patch</option>
+                  <option value="Vulnerability Alert">Vulnerability Alert</option>
+                  <option value="Informational">Informational</option>
+                </select>
+
+
+                <label className="form-label">Summary</label>
+                <textarea name="description" placeholder="A brief summary of the advisory..." value={newAdvisory.description} onChange={handleInputChange} rows="3" required className="form-input"></textarea>
+
+                <label className="form-label">Vulnerability Details</label>
+                <textarea name="vulnerability_details" placeholder="Details about the vulnerability (one per line)..." value={newAdvisory.vulnerability_details} onChange={handleInputChange} rows="3" className="form-input"></textarea>
+
+                <label className="form-label">Technical Analysis</label>
+                <textarea name="technical_analysis" placeholder="Technical analysis of the threat..." value={newAdvisory.technical_analysis} onChange={handleInputChange} rows="4" className="form-input"></textarea>
+
+                <label className="form-label">Impact</label>
+                <textarea name="impact_details" placeholder="Potential impact (one per line)..." value={newAdvisory.impact_details} onChange={handleInputChange} rows="3" className="form-input"></textarea>
+
+                <label className="form-label">Mitigation Strategies</label>
+                <textarea name="mitigation_strategies" placeholder="Mitigation steps (one per line)..." value={newAdvisory.mitigation_strategies} onChange={handleInputChange} rows="3" className="form-input"></textarea>
+
+                <label className="form-label">Detection and Response</label>
+                <textarea name="detection_response" placeholder="Detection methods (one per line)..." value={newAdvisory.detection_response} onChange={handleInputChange} rows="3" className="form-input"></textarea>
+
+                <label className="form-label">Recommendations</label>
+                <textarea name="recommendations" placeholder="Further recommendations (one per line)..." value={newAdvisory.recommendations} onChange={handleInputChange} rows="3" className="form-input"></textarea>
+
+                <button type="submit" className="submit-button w-full mt-4" disabled={isLoading}><Send size={18} className="inline-block mr-2" /> Dispatch Manually</button>
+              </form>
+            </div>
+          )}
         </div>
       </aside>
 
       {/* Main Content Area */}
       <main className="flex-1 p-6 overflow-y-auto">
-         <div className="flex justify-between items-center mb-6">
+        <div className="flex justify-between ajay items-center mb-6">
           <h1 className="text-3xl font-bold text-gray-900">{selectedClientName ? `Advisories for ${selectedClientName}` : "Select a Client"}</h1>
         </div>
         {isLoading && <p>Loading advisories...</p>}
@@ -463,22 +534,36 @@ export default function AdvisorySystem() {
           {advisories.map((advisory) => (
             <div key={advisory.id} className="advisory-card" onClick={() => setViewingAdvisory(advisory)}>
               <div className="flex justify-between items-start">
-                  <h3 className="font-bold text-lg mb-2 text-gray-800">{advisory.update_type || "Consolidated Draft"}</h3>
-                  {advisory.status === 'Draft' && <span className="draft-badge">Draft</span>}
+                <h3 className="font-bold text-lg mb-2 text-gray-800">
+                  {advisory.update_type === "Advisory" ? "Feed Advisory" : advisory.update_type || "Consolidated Draft"}
+                </h3>
+
+                {advisory.status === 'Draft' && <span className="draft-badge">Draft</span>}
               </div>
               <p className="text-sm text-gray-600 line-clamp-4">{stripHtml(advisory.description)}</p>
               <div className="flex justify-between items-center mt-4">
-                  <span className="text-xs text-gray-500">{new Date(advisory.timestamp).toLocaleDateString()}</span>
-                  <div className="flex gap-2">
-                    {advisory.status === 'Draft' && (<button onClick={(e) => handleOpenEditModal(advisory, e)} className="secondary-button !px-2 !py-1" title="Edit"><Edit3 size={14} /></button>)}
-                    <button onClick={(e) => { e.stopPropagation(); setViewingAdvisory(advisory); }} className="secondary-button !px-2 !py-1" title="View Details"><Eye size={14}/></button>
-                  </div>
+                <span className="text-xs text-gray-500">{new Date(advisory.timestamp).toLocaleDateString()}</span>
+                <div className="flex gap-2">
+                  {advisory.status === 'Draft' && (<button onClick={(e) => handleOpenEditModal(advisory, e)} className="secondary-button !px-2 !py-1" title="Edit"><Edit3 size={14} /></button>)}
+                  <button onClick={(e) => { e.stopPropagation(); setViewingAdvisory(advisory); }} className="secondary-button !px-2 !py-1" title="View Details"><Eye size={14} /></button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteAdvisory(advisory.id);
+                    }}
+                    className="secondary-button !px-2 !py-1"
+                    title="Delete Advisory"
+                  >
+                    <Delete size={14} />
+                  </button>
+
+                </div>
               </div>
             </div>
           ))}
         </div>
       </main>
-      
+
       {/* ===== RSS FEED SIDEBAR (RESTORED) ===== */}
       <aside className="w-96 bg-white p-5 border-l border-gray-200 overflow-y-auto">
         <h2 className="text-2xl font-bold text-gray-800 mb-4">
@@ -508,20 +593,20 @@ export default function AdvisorySystem() {
               <button onClick={handleCloseEditModal} className="modal-close-icon"><X size={24} /></button>
             </div>
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-4">
-                <label className="form-label">Summary</label>
-                <textarea name="description" value={editFormState.description || ''} onChange={handleEditFormChange} rows="3" className="form-input"></textarea>
-                <label className="form-label">Vulnerability Details</label>
-                <textarea name="vulnerability_details" value={editFormState.vulnerability_details || ''} onChange={handleEditFormChange} rows="3" className="form-input"></textarea>
-                <label className="form-label">Technical Analysis</label>
-                <textarea name="technical_analysis" value={editFormState.technical_analysis || ''} onChange={handleEditFormChange} rows="5" className="form-input"></textarea>
-                <label className="form-label">Impact</label>
-                <textarea name="impact_details" value={editFormState.impact_details || ''} onChange={handleEditFormChange} rows="3" className="form-input"></textarea>
-                <label className="form-label">Mitigation Strategies</label>
-                <textarea name="mitigation_strategies" value={editFormState.mitigation_strategies || ''} onChange={handleEditFormChange} rows="3" className="form-input"></textarea>
-                <label className="form-label">Detection and Response</label>
-                <textarea name="detection_response" value={editFormState.detection_response || ''} onChange={handleEditFormChange} rows="3" className="form-input"></textarea>
-                <label className="form-label">Recommendations</label>
-                <textarea name="recommendations" value={editFormState.recommendations || ''} onChange={handleEditFormChange} rows="3" className="form-input"></textarea>
+              <label className="form-label">Summary</label>
+              <textarea name="description" value={editFormState.description || ''} onChange={handleEditFormChange} rows="3" className="form-input"></textarea>
+              <label className="form-label">Vulnerability Details</label>
+              <textarea name="vulnerability_details" value={editFormState.vulnerability_details || ''} onChange={handleEditFormChange} rows="3" className="form-input"></textarea>
+              <label className="form-label">Technical Analysis</label>
+              <textarea name="technical_analysis" value={editFormState.technical_analysis || ''} onChange={handleEditFormChange} rows="5" className="form-input"></textarea>
+              <label className="form-label">Impact</label>
+              <textarea name="impact_details" value={editFormState.impact_details || ''} onChange={handleEditFormChange} rows="3" className="form-input"></textarea>
+              <label className="form-label">Mitigation Strategies</label>
+              <textarea name="mitigation_strategies" value={editFormState.mitigation_strategies || ''} onChange={handleEditFormChange} rows="3" className="form-input"></textarea>
+              <label className="form-label">Detection and Response</label>
+              <textarea name="detection_response" value={editFormState.detection_response || ''} onChange={handleEditFormChange} rows="3" className="form-input"></textarea>
+              <label className="form-label">Recommendations</label>
+              <textarea name="recommendations" value={editFormState.recommendations || ''} onChange={handleEditFormChange} rows="3" className="form-input"></textarea>
             </div>
             <div className="flex justify-end gap-4 mt-6">
               <button onClick={handleCloseEditModal} className="secondary-button">Cancel</button>
@@ -535,7 +620,7 @@ export default function AdvisorySystem() {
       {showConfigModal && configuringClient && (
         <div className="modal-overlay" onClick={() => setShowConfigModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-             <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between cross items-center mb-4">
               <h3 className="modal-title">Configure Tech for: {configuringClient.name}</h3>
               <button onClick={() => setShowConfigModal(false)} className="modal-close-icon"><X size={24} /></button>
             </div>
@@ -543,19 +628,19 @@ export default function AdvisorySystem() {
               <h4 className="font-semibold text-gray-700 mb-2">Assigned Technologies</h4>
               <div className="space-y-3 max-h-72 overflow-y-auto pr-2 border rounded-md p-4 bg-gray-50">
                 {clientTechDetails.length > 0 ? (clientTechDetails.map((tech) => (
-                    <div key={tech.id} className="config-item-card">
-                      <h4 className="config-item-title">{tech.tech_stack_name} (Version: {tech.version})</h4>
-                      <button onClick={() => handleDeleteClientTech(tech.id)} className="delete-button" title="Delete this tech stack"><X size={16} /> Delete</button>
-                      <div className="mt-2">
-                        <h5 className="config-item-subtitle flex items-center gap-2"><Mail size={14} /> Notification Contacts:</h5>
-                        {tech.contacts.length > 0 ? (<ul className="list-disc list-inside pl-4 text-sm text-gray-600 mt-1">{tech.contacts.map((contact) => (<li key={contact.id}>{contact.email}</li>))}</ul>) : (<p className="text-xs text-gray-500 italic mt-1">No contacts assigned.</p>)}
-                        <div className="flex gap-2 mt-2">
-                          <input type="email" placeholder="new.contact@email.com" onBlur={(e) => setNewContactEmail(e.target.value)} className="rss-input text-sm flex-grow"/>
-                          <button onClick={() => handleAddContact(tech.id)} className="add-rss-button text-sm">Add</button>
-                        </div>
+                  <div key={tech.id} className="config-item-card">
+                    <h4 className="config-item-title">{tech.tech_stack_name} (Version: {tech.version})</h4>
+                    <button onClick={() => handleDeleteClientTech(tech.id)} className="delete-button" title="Delete this tech stack"><X size={16} /> Delete</button>
+                    <div className="mt-2">
+                      <h5 className="config-item-subtitle flex items-center gap-2"><Mail size={14} /> Notification Contacts:</h5>
+                      {tech.contacts.length > 0 ? (<ul className="list-disc list-inside pl-4 text-sm text-gray-600 mt-1">{tech.contacts.map((contact) => (<li key={contact.id}>{contact.email}</li>))}</ul>) : (<p className="text-xs text-gray-500 italic mt-1">No contacts assigned.</p>)}
+                      <div className="flex gap-2 mt-2">
+                        <input type="email" placeholder="new.contact@email.com" onBlur={(e) => setNewContactEmail(e.target.value)} className="rss-input text-sm flex-grow" />
+                        <button onClick={() => handleAddContact(tech.id)} className="add-rss-button text-sm">Add</button>
                       </div>
-                    </div>))) : 
-                    (<p className="text-sm text-gray-500 italic text-center p-4">No technologies assigned yet.</p>)}
+                    </div>
+                  </div>))) :
+                  (<p className="text-sm text-gray-500 italic text-center p-4">No technologies assigned yet.</p>)}
               </div>
             </section>
             <div className="border-t my-4"></div>
@@ -566,7 +651,7 @@ export default function AdvisorySystem() {
                   <option value="">-- Select Tech --</option>
                   {techStacks.map((stack) => (<option key={stack.id} value={stack.id}>{stack.name}</option>))}
                 </select>
-                <input type="text" placeholder="Version" value={newVersion} onChange={(e) => setNewVersion(e.target.value)} className="form-input col-span-1"/>
+                <input type="text" placeholder="Version" value={newVersion} onChange={(e) => setNewVersion(e.target.value)} className="form-input col-span-1" />
                 <button onClick={handleAddClientTechVersion} className="submit-button col-span-1 whitespace-nowrap !py-2"><PlusCircle size={16} className="mr-2" /> Assign</button>
               </div>
             </section>
@@ -577,7 +662,7 @@ export default function AdvisorySystem() {
       {showTechModal && (
         <div className="modal-overlay" onClick={() => setShowTechModal(false)}>
           <div className="modal-content" style={{ maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between cross items-center mb-4">
               <h3 className="modal-title">Manage Tech Stacks</h3>
               <button onClick={() => setShowTechModal(false)} className="modal-close-icon"><X size={24} /></button>
             </div>

@@ -27,11 +27,13 @@ body {
 
 .flex {
     display: flex;
+    
 }
 
 .h-screen {
     height: 100vh;
 }
+
 
 .bg-gray-100 {
     background-color: var(--gray-100);
@@ -344,6 +346,60 @@ body {
   background-color: var(--gray-100);
   transition: background-color 0.2s;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.soc{
+    margin:0px;
+}
+.ajay{
+    display:flex;
+    justify-content: center;
+    gap:30px;
+}
+.cross{
+    display:flex;
+    justify-content:space-between;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
