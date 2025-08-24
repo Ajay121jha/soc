@@ -20,19 +20,13 @@ import feedparser
 from flask_mail import Mail, Message
 from io import BytesIO
 import zipfile
-
-
-
-
-
+import json # Added for AI generation
 
 AZURE_TENANT_ID = 'YOUR_TENANT_ID'
 AZURE_CLIENT_ID = 'YOUR_CLIENT_ID'
 AZURE_CLIENT_SECRET = 'YOUR_CLIENT_SECRET'
 GRAPH_SCOPE = ['https://graph.microsoft.com/.default']
 GRAPH_ENDPOINT = 'https://graph.microsoft.com/v1.0'
-
-
 
 def get_graph_access_token():
     authority = f'https://login.microsoftonline.com/{AZURE_TENANT_ID}'
@@ -47,18 +41,188 @@ def get_graph_access_token():
     else:
         raise Exception(result.get('error_description') or 'Failed to get access token')
 
-
-
-
 PDF_DIR = os.path.join(os.getcwd(), "pdfs")
 os.makedirs(PDF_DIR, exist_ok=True)
-
 
 def setup_routes(app):
     @app.route("/")
     def home():
         return jsonify({"message": "API is running!"})
-    
+
+    # --- NEW ADVISORY SYSTEM ROUTES ---
+
+    @app.route("/api/clients/<int:client_id>/escalation-matrix", methods=["GET"])
+    def get_escalation_matrix_for_client(client_id):
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            query = "SELECT id, client_email as email, level FROM escalation_matrix WHERE client_id = %s"
+            cursor.execute(query, (client_id,))
+            contacts = cursor.fetchall()
+
+            matrix = {"L1": [], "L2": [], "L3": []}
+            for contact in contacts:
+                if contact['level'] in matrix:
+                    matrix[contact['level']].append(contact)
+
+            return jsonify(matrix)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        finally:
+            if conn and conn.is_connected():
+                cursor.close()
+                conn.close()
+
+    # FIX: Add route to create a new escalation contact
+    @app.route("/api/clients/<int:client_id>/escalation-contacts", methods=["POST"])
+    def add_escalation_contact_for_client(client_id):
+        data = request.get_json()
+        email = data.get("email")
+        level = data.get("level")
+
+        if not email or not level:
+            return jsonify({"error": "Email and level are required"}), 400
+
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            # Assuming your table has columns: client_id, client_email, level
+            # And other columns like client_name, gtb_name etc. can be NULL or have defaults
+            query = """
+                INSERT INTO escalation_matrix (client_id, client_email, level, client_name, gtb_name) 
+                VALUES (%s, %s, %s, %s, %s)
+            """
+            # Providing placeholder names, adjust as needed
+            client_name_placeholder = email.split('@')[0]
+            gtb_name_placeholder = "GTB Contact"
+            
+            cursor.execute(query, (client_id, email, level, client_name_placeholder, gtb_name_placeholder))
+            conn.commit()
+            return jsonify({"message": "Contact added successfully"}), 201
+        except mysql.connector.Error as err:
+            conn.rollback()
+            if err.errno == 1062: # Duplicate entry
+                 return jsonify({"error": f"Contact '{email}' already exists for this client."}), 409
+            return jsonify({"error": str(err)}), 500
+        finally:
+            if conn and conn.is_connected():
+                cursor.close()
+                conn.close()
+
+    # FIX: Add route to delete an escalation contact
+    @app.route("/api/escalation-contacts/<int:contact_id>", methods=["DELETE"])
+    def delete_escalation_contact(contact_id):
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            query = "DELETE FROM escalation_matrix WHERE id = %s"
+            cursor.execute(query, (contact_id,))
+            conn.commit()
+            if cursor.rowcount == 0:
+                return jsonify({"error": "Contact not found"}), 404
+            return jsonify({"message": "Contact deleted successfully"}), 200
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            if conn and conn.is_connected():
+                cursor.close()
+                conn.close()
+
+    # FIX: Add route to get recipients for an advisory email
+    @app.route("/api/advisories/<int:advisory_id>/recipients", methods=["GET"])
+    def get_advisory_recipients(advisory_id):
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+
+            # First, find the client_id from the advisory
+            cursor.execute("SELECT client_id FROM advisories WHERE id = %s", (advisory_id,))
+            advisory = cursor.fetchone()
+            if not advisory:
+                return jsonify({"error": "Advisory not found"}), 404
+
+            client_id = advisory['client_id']
+
+            # Now, get all escalation contacts for that client
+            cursor.execute("SELECT client_email FROM escalation_matrix WHERE client_id = %s", (client_id,))
+            recipients = [row['client_email'] for row in cursor.fetchall()]
+
+            return jsonify(recipients)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        finally:
+            if conn and conn.is_connected():
+                cursor.close()
+                conn.close()
+
+
+    @app.route("/api/generate-advisory-from-url", methods=["POST"])
+    def generate_advisory_from_url():
+        data = request.get_json()
+        if not data or 'title' not in data or 'summary' not in data:
+            return jsonify({"error": "Missing title or summary in request"}), 400
+
+        rss_title = data['title']
+        rss_summary = data['summary']
+
+        schema = {
+            "type": "OBJECT",
+            "properties": {
+                "summary": {"type": "STRING"},
+                "vulnerability_details": {"type": "STRING"},
+                "technical_analysis": {"type": "STRING"},
+                "impact_assessment": {"type": "STRING"},
+                "mitigation_strategies": {"type": "STRING"},
+                "detection_and_response": {"type": "STRING"},
+                "recommendations": {"type": "STRING"},
+                "update_type": {"type": "STRING", "enum": ["Security Patch", "Vulnerability Alert", "Informational"]},
+            },
+            "required": ["summary", "vulnerability_details", "impact_assessment", "mitigation_strategies"]
+        }
+
+        prompt = f"""
+            Act as a senior cybersecurity analyst. Based on the following RSS feed item, generate a detailed security advisory.
+            The content is from a trusted source. Extract and structure the information into the required JSON format.
+            If a specific detail isn't present, use your expertise to infer likely scenarios or state "Details not available in the provided summary."
+            Ensure each section is detailed and written as a list of points separated by newlines (\\n).
+
+            RSS Item Title: "{rss_title}"
+            RSS Item Summary: "{rss_summary}"
+
+            Generate the advisory content.
+        """
+
+        try:
+            api_key = ""  # The environment will provide this
+            api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key={api_key}"
+
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "responseMimeType": "application/json",
+                    "responseSchema": schema,
+                },
+            }
+
+            response = requests.post(api_url, json=payload)
+            response.raise_for_status()
+
+            result = response.json()
+
+            if result.get("candidates"):
+                generated_text = result["candidates"][0]["content"]["parts"][0]["text"]
+                generated_data = json.loads(generated_text)
+                return jsonify(generated_data)
+            else:
+                return jsonify({"error": "No content generated by AI."}), 500
+
+        except requests.exceptions.RequestException as e:
+            return jsonify({"error": f"API request failed: {e}"}), 500
+        except Exception as e:
+            return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
+
+    # --- EXISTING ROUTES ---
     
     @app.route('/api/shifts/<int:shift_id>/notes', methods=['GET'])
     def get_shift_notes(shift_id):
@@ -66,7 +230,6 @@ def setup_routes(app):
             conn = get_db_connection()
             cursor = conn.cursor(dictionary=True)
             
-            # Simplified query - just get notes with employee_id
             query = """
                 SELECT employee_id, note, created_at
                 FROM handover_notes
@@ -132,7 +295,6 @@ def setup_routes(app):
         except Exception as e:
             return jsonify({"error": str(e)}), 500
     
-
 
     @app.route('/api/update_cab_status', methods=['PATCH'])
     def update_cab_status():
@@ -472,30 +634,6 @@ def setup_routes(app):
         except Exception as e:
             return jsonify({'error': str(e)}), 500
         
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     
     @app.route('/api/kb-search', methods=['GET'])
     def search():
@@ -730,52 +868,6 @@ def setup_routes(app):
                 cursor.close()
             if conn:
                 conn.close()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     
     @app.route("/api/assets", methods=["GET", "POST"])
     def assets():
@@ -909,9 +1001,6 @@ def setup_routes(app):
                 conn.close()
 
 
-
-    
-
     @app.route("/api/passwords", methods=["GET", "POST"])
     def passwords():
         conn = get_db_connection()
@@ -946,19 +1035,6 @@ def setup_routes(app):
                 return jsonify({"error": str(e)}), 500
             finally:
                 conn.close()
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     @app.route('/api/clusters', methods=['GET'])
     def get_clusters():
@@ -1019,19 +1095,6 @@ def setup_routes(app):
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
-
-
-
-
-
-
-
-
-
-
-
-
-
     @app.route('/api/upload-pdf', methods=['POST'])
     def upload_pdf():
         if 'pdf' not in request.files or 'clientId' not in request.form:
@@ -1085,37 +1148,11 @@ def setup_routes(app):
     @app.route('/pdfs/<path:filename>')
     def serve_pdf(filename):
         return send_from_directory(PDF_DIR, filename)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     
-
     def get_contacts_for_tech_map(cursor, client_tech_map_id):
         """Fetches all contacts for a given client_tech_map entry."""
         cursor.execute("SELECT id, email FROM client_tech_contacts WHERE client_tech_map_id = %s", (client_tech_map_id,))
         return cursor.fetchall()
-
-    # --- API Endpoints ---
-
-  
 
     @app.route("/api/clients", methods=["GET", "POST"])
     def clients():
@@ -1235,9 +1272,6 @@ def setup_routes(app):
         finally:
             conn.close()
     
-    # <<< UPDATED: This function is now simplified to remove de-duplication and keyword filtering >>>
-    # In routes.py
-
     @app.route("/api/clients/<int:client_id>/feed-items", methods=["GET"])
     def get_client_feed_items(client_id):
         conn = None
@@ -1245,7 +1279,6 @@ def setup_routes(app):
             conn = get_db_connection()
             cursor = conn.cursor(dictionary=True)
             
-            # 1. Find all RSS feed URLs for the client's tech stacks
             query = """
                 SELECT DISTINCT rf.url, rf.tech_stack_id, ts.name as tech_stack_name
                 FROM rss_feeds rf
@@ -1258,7 +1291,6 @@ def setup_routes(app):
             
             all_items_found = []
 
-            # 2. Process every feed and gather all items
             for feed in feeds:
                 try:
                     parsed_feed = feedparser.parse(feed['url'])
@@ -1274,9 +1306,7 @@ def setup_routes(app):
                 except Exception as e:
                     print(f"Error fetching or parsing feed {feed['url']}: {e}")
 
-            # 3. Create or update a draft advisory with the fetched content
             if all_items_found:
-                # Group items by the technology they belong to
                 items_by_tech = {}
                 for item in all_items_found:
                     tech_id = item['tech_stack_id']
@@ -1284,22 +1314,17 @@ def setup_routes(app):
                         items_by_tech[tech_id] = []
                     items_by_tech[tech_id].append(item)
 
-                # Get client name once to avoid querying in a loop
                 cursor.execute("SELECT name FROM clients WHERE id = %s", (client_id,))
                 client_result = cursor.fetchone()
                 client_name = client_result['name'] if client_result else 'Unknown Client'
 
-                # Loop through each technology that had feed items
                 for tech_id, items_list in items_by_tech.items():
                     tech_stack_name = items_list[0]['tech_stack_name']
                     
-                    # Create a consolidated block of all findings for this tech stack
                     findings_block = f"Latest feed contents from {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}:\n\n"
                     for item in items_list:
                         findings_block += f"--- \nTitle: {item['title']}\nSource: {item['link']}\n\n"
                     
-                    # --- NEW LOGIC STARTS HERE ---
-                    # A. Check for an existing draft from today for this client and tech
                     cursor.execute(
                         """
                         SELECT id FROM advisories
@@ -1314,9 +1339,7 @@ def setup_routes(app):
                     )
                     existing_draft = cursor.fetchone()
                     
-                    # B. If a draft exists, UPDATE it. Otherwise, INSERT a new one.
                     if existing_draft:
-                        # An existing draft was found, so we UPDATE it
                         update_query = """
                             UPDATE advisories
                             SET technical_analysis = %s, timestamp = NOW()
@@ -1324,7 +1347,6 @@ def setup_routes(app):
                         """
                         cursor.execute(update_query, (findings_block, existing_draft['id']))
                     else:
-                        # No draft found for today, so we INSERT a new one
                         description = f"Automated feed snapshot for {tech_stack_name}. Contains all current items from assigned feeds."
                         insert_query = """
                             INSERT INTO advisories (client_id, client_name, service_or_os, update_type, description, technical_analysis, status, timestamp)
@@ -1334,7 +1356,6 @@ def setup_routes(app):
                 
                 conn.commit()
 
-            # Return all items found so the frontend can display them
             return jsonify(all_items_found)
 
         except Exception as e:
@@ -1536,10 +1557,6 @@ def setup_routes(app):
             conn.close()
 
 
-
-    
-
-
     @app.route('/api/clients/<int:client_id>/advisories', methods=['GET'])
     def get_client_advisories(client_id):
         try:
@@ -1565,12 +1582,6 @@ def setup_routes(app):
             return jsonify(advisories), 200
         except Exception as e:
             return jsonify({"error": str(e)}), 500
-
-
-
-
-
-
 
     @app.route('/api/dispatch-advisory', methods=['POST'])
     def dispatch_advisory():
@@ -1633,3 +1644,4 @@ def setup_routes(app):
         finally:
             cursor.close()
             conn.close()
+

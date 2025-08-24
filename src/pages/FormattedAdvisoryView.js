@@ -1,96 +1,217 @@
-import React from 'react';
-import { X } from 'lucide-react';
+"use client"
+import { X, Calendar, Tag, Shield, AlertTriangle, CheckCircle, Eye, FileText } from "lucide-react"
+import "../styles/FormattedAdvisoryView.css"
 
-// Helper function to format the timestamp
-const formatDate = (isoString) => {
-  if (!isoString) return 'N/A';
-  return new Date(isoString).toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-};
-
-// Helper function to render text with bullet points if it contains newlines
-const renderAsList = (text) => {
-  if (!text || typeof text !== 'string') {
-    return <li>Not specified.</li>;
+const FormattedAdvisoryView = ({ advisory, onClose }) => {
+  const formatDate = (timestamp) => {
+    const date = new Date(timestamp)
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
   }
-  // Check if there are newline characters to determine if it should be a list
-  if (text.includes('\n')) {
-      return text.split('\n').map((item, index) => (
-          item.trim() && <li key={index}>{item.trim()}</li>
-      ));
-  }
-  // If no newlines, render as a single paragraph/list item
-  return <li>{text}</li>;
-};
 
-export default function FormattedAdvisoryView({ advisory, onClose }) {
-  if (!advisory) return null;
+  const renderAsList = (text, limit = null) => {
+    if (!text || typeof text !== "string") return <p className="no-content">Not specified.</p>
+    let items = text.split("\n").filter((item) => item.trim())
+    if (limit !== null) {
+      items = items.slice(0, limit)
+    }
+    return (
+      <ul className="content-list">
+        {items.map((item, index) => (
+          <li key={index} className="content-item">
+            {item.trim()}
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  const getSeverityIcon = (updateType) => {
+    switch (updateType) {
+      case "Vulnerability Alert":
+        return <AlertTriangle className="severity-icon critical" size={20} />
+      case "Security Patch":
+        return <Shield className="severity-icon high" size={20} />
+      default:
+        return <CheckCircle className="severity-icon medium" size={20} />
+    }
+  }
+
+  const getSeverityClass = (updateType) => {
+    switch (updateType) {
+      case "Vulnerability Alert":
+        return "critical"
+      case "Security Patch":
+        return "high"
+      default:
+        return "medium"
+    }
+  }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content !max-w-4xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-start mb-4">
-          <div>
-            <h2 className="text-sm font-bold text-blue-700">GRANT THORNTON</h2>
-            <p className="text-xs text-gray-500">An instinct for growth™</p>
+    <div className="advisory-modal-overlay" onClick={onClose}>
+      <div className="advisory-modal-container" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="advisory-modal-header">
+          <div className="advisory-header-content">
+            <div className="advisory-title-section">
+              {getSeverityIcon(advisory.update_type)}
+              <div>
+                <h2 className="advisory-modal-title">{`${advisory.update_type} for ${advisory.service_or_os}`}</h2>
+                <div className={`severity-badge ${getSeverityClass(advisory.update_type)}`}>
+                  {advisory.update_type === "Vulnerability Alert"
+                    ? "Critical"
+                    : advisory.update_type === "Security Patch"
+                      ? "High"
+                      : "Medium"}{" "}
+                  Priority
+                </div>
+              </div>
+            </div>
+            <button className="advisory-close-button" onClick={onClose} title="Close">
+              <X size={24} />
+            </button>
           </div>
-          <button onClick={onClose} className="modal-close-icon">
-            <X size={24} />
-          </button>
         </div>
 
-        <div className="border-t pt-4 max-h-[80vh] overflow-y-auto pr-4">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            {`${advisory.update_type || 'General Update'} for ${advisory.service_or_os}`}
-          </h1>
-          <div className="text-xs text-gray-600 bg-gray-100 p-2 rounded-md mb-6 flex flex-wrap gap-x-4 gap-y-1">
-            <span><strong>Date:</strong> {formatDate(advisory.timestamp)}</span>
-            <span>||</span>
-            <span><strong>Category:</strong> {advisory.update_type === 'Vulnerability Alert' ? 'Malware' : 'General'}</span>
-            <span>||</span>
-            <span><strong>Product/Software:</strong> {advisory.service_or_os}</span>
+        {/* Content */}
+        <div className="advisory-modal-content">
+          {/* Meta Information */}
+          <div className="advisory-meta-section">
+            <div className="meta-grid">
+              <div className="meta-item">
+                <Calendar size={16} className="meta-icon" />
+                <div>
+                  <span className="meta-label">Date Issued</span>
+                  <span className="meta-value">{formatDate(advisory.timestamp)}</span>
+                </div>
+              </div>
+              <div className="meta-item">
+                <Tag size={16} className="meta-icon" />
+                <div>
+                  <span className="meta-label">Category</span>
+                  <span className="meta-value">
+                    {advisory.update_type === "Vulnerability Alert" ? "Security Alert" : "System Update"}
+                  </span>
+                </div>
+              </div>
+              <div className="meta-item">
+                <FileText size={16} className="meta-icon" />
+                <div>
+                  <span className="meta-label">Affected System</span>
+                  <span className="meta-value">{advisory.service_or_os}</span>
+                </div>
+              </div>
+              <div className="meta-item">
+                <Eye size={16} className="meta-icon" />
+                <div>
+                  <span className="meta-label">Status</span>
+                  <span className={`meta-value status-${advisory.status?.toLowerCase()}`}>
+                    {advisory.status || "Unknown"}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Renders each section based on the new data fields */}
-          <div className="mb-6">
-            <h3 className="section-title">Summary</h3>
-            <p className="section-content">{advisory.description || 'No summary provided.'}</p>
+          {/* Executive Summary */}
+          <div className="advisory-section">
+            <h3 className="section-title">
+              <FileText size={18} className="section-icon" />
+              Executive Summary
+            </h3>
+            <div className="section-content">
+              <p className="summary-text">{advisory.description || "No summary provided."}</p>
+            </div>
           </div>
 
-          <div className="mb-6">
-            <h3 className="section-title">Vulnerability Details</h3>
-            <ul className="section-content list-disc pl-5 space-y-1">{renderAsList(advisory.vulnerability_details)}</ul>
-          </div>
-          
-          <div className="mb-6">
-            <h3 className="section-title">Technical Analysis</h3>
-            <div className="section-content bg-gray-50 p-4 rounded-md font-mono text-sm whitespace-pre-wrap">{advisory.technical_analysis || 'No technical details available.'}</div>
-          </div>
-          
-          <div className="mb-6">
-            <h3 className="section-title">Impact</h3>
-            <ul className="section-content list-disc pl-5 space-y-1">{renderAsList(advisory.impact_details)}</ul>
-          </div>
+          {/* Vulnerability Details */}
+          {advisory.vulnerability_details && (
+            <div className="advisory-section">
+              <h3 className="section-title">
+                <AlertTriangle size={18} className="section-icon" />
+                Vulnerability Details
+              </h3>
+              <div className="section-content">{renderAsList(advisory.vulnerability_details)}</div>
+            </div>
+          )}
 
-          <div className="mb-6">
-            <h3 className="section-title">Mitigation Strategies</h3>
-            <ul className="section-content list-disc pl-5 space-y-1">{renderAsList(advisory.mitigation_strategies)}</ul>
-          </div>
-          
-          <div className="mb-6">
-            <h3 className="section-title">Detection and Response</h3>
-            <ul className="section-content list-disc pl-5 space-y-1">{renderAsList(advisory.detection_response)}</ul>
-          </div>
+          {/* Impact Assessment */}
+          {advisory.impact_details && (
+            <div className="advisory-section">
+              <h3 className="section-title">
+                <Shield size={18} className="section-icon" />
+                Impact Assessment
+              </h3>
+              <div className="section-content">{renderAsList(advisory.impact_details)}</div>
+            </div>
+          )}
 
-          <div className="mb-6">
-            <h3 className="section-title">Recommendations</h3>
-            <ul className="section-content list-disc pl-5 space-y-1">{renderAsList(advisory.recommendations)}</ul>
+          {/* Mitigation Strategies */}
+          {advisory.mitigation_strategies && (
+            <div className="advisory-section">
+              <h3 className="section-title">
+                <CheckCircle size={18} className="section-icon" />
+                Mitigation Strategies
+              </h3>
+              <div className="section-content">{renderAsList(advisory.mitigation_strategies)}</div>
+            </div>
+          )}
+
+          {/* Technical Analysis */}
+          {advisory.technical_analysis && (
+            <div className="advisory-section">
+              <h3 className="section-title">
+                <FileText size={18} className="section-icon" />
+                Technical Analysis
+              </h3>
+              <div className="section-content">{renderAsList(advisory.technical_analysis, 10)}</div>
+            </div>
+          )}
+
+          {/* Detection and Response */}
+          {advisory.detection_response && (
+            <div className="advisory-section">
+              <h3 className="section-title">
+                <Eye size={18} className="section-icon" />
+                Detection and Response
+              </h3>
+              <div className="section-content">{renderAsList(advisory.detection_response)}</div>
+            </div>
+          )}
+
+          {/* Additional Recommendations */}
+          {advisory.recommendations && (
+            <div className="advisory-section">
+              <h3 className="section-title">
+                <CheckCircle size={18} className="section-icon" />
+                Additional Recommendations
+              </h3>
+              <div className="section-content">{renderAsList(advisory.recommendations)}</div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="advisory-modal-footer">
+          <div className="footer-content">
+            <p className="footer-text">
+              This advisory was generated on {formatDate(advisory.timestamp)} and should be reviewed regularly for
+              updates.
+            </p>
+            <button className="footer-close-btn" onClick={onClose}>
+              Close Advisory
+            </button>
           </div>
         </div>
       </div>
     </div>
-  );
+  )
 }
+
+export default FormattedAdvisoryView
