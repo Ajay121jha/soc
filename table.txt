@@ -1,0 +1,202 @@
+| advisories | CREATE TABLE `advisories` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `client_id` int NOT NULL,
+  `client_name` varchar(255) DEFAULT NULL,
+  `service_or_os` varchar(255) DEFAULT NULL,
+  `update_type` varchar(255) DEFAULT NULL,
+  `description` text,
+  `advisory_content` text NOT NULL,
+  `timestamp` datetime NOT NULL,
+  `status` varchar(50) DEFAULT 'Sent',
+  `vulnerability_details` text,
+  `technical_analysis` text,
+  `impact_details` text,
+  `mitigation_strategies` text,
+  `detection_response` text,
+  `recommendations` text,
+  PRIMARY KEY (`id`),
+  KEY `client_id` (`client_id`),
+  CONSTRAINT `advisories_ibfk_1` FOREIGN KEY (`client_id`) REFERENCES `clients` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci |
+
+
+
+
+-----------------------------------------------+
+
+| advisories | CREATE TABLE `advisories` (
+
+  `id` int NOT NULL AUTO_INCREMENT,
+
+  `client_id` int NOT NULL,
+
+  `client_name` varchar(255) DEFAULT NULL,
+
+  `service_or_os` varchar(255) DEFAULT NULL,
+
+  `update_type` varchar(255) DEFAULT NULL,
+
+  `description` text,
+
+  `advisory_content` text NOT NULL,
+
+  `timestamp` datetime NOT NULL,
+
+  `status` varchar(50) DEFAULT 'Sent',
+
+  `vulnerability_details` text,
+
+  `technical_analysis` text,
+
+  `impact_details` text,
+
+  `mitigation_strategies` text,
+
+  `detection_response` text,
+
+  `recommendations` text,
+
+  PRIMARY KEY (`id`),
+
+  KEY `client_id` (`client_id`),
+
+  CONSTRAINT `advisories_ibfk_1` FOREIGN KEY (`client_id`) REFERENCES `clients` (`id`) ON DELETE CASCADE
+
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci |
+
++------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+
+1 row in set (0.01 sec)
+ 
+mysql> show create table categories;
+
++------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+
+| Table      | Create Table                                                                                                                                                                                                                           |
+
++------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+
+| categories | CREATE TABLE `categories` (
+
+  `id` int NOT NULL AUTO_INCREMENT,
+
+  `name` varchar(255) NOT NULL,
+
+  PRIMARY KEY (`id`),
+
+  UNIQUE KEY `name` (`name`)
+
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci |
+ 
+---------------------------------------------------------------------+
+
+| tech_stacks | CREATE TABLE `tech_stacks` (
+
+  `id` int NOT NULL AUTO_INCREMENT,
+
+  `subcategory_id` int NOT NULL,
+
+  `name` varchar(255) NOT NULL,
+
+  `description` text,
+
+  PRIMARY KEY (`id`),
+
+  UNIQUE KEY `subcategory_id` (`subcategory_id`,`name`),
+
+  CONSTRAINT `tech_stacks_ibfk_1` FOREIGN KEY (`subcategory_id`) REFERENCES `subcategories` (`id`)
+
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci |
+ 
+rss_feeds | CREATE TABLE `rss_feeds` (
+
+  `id` int NOT NULL AUTO_INCREMENT,
+
+  `url` varchar(2048) NOT NULL,
+
+  `category_id` int DEFAULT NULL,
+
+  PRIMARY KEY (`id`),
+
+  KEY `category_id` (`category_id`),
+
+  CONSTRAINT `rss_feeds_ibfk_1` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`)
+
+) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci |
+ 
+-+
+
+| clients | CREATE TABLE `clients` (
+
+  `id` int NOT NULL AUTO_INCREMENT,
+
+  `name` varchar(100) NOT NULL,
+
+  PRIMARY KEY (`id`),
+
+  UNIQUE KEY `name` (`name`)
+
+) ENGINE=InnoDB AUTO_INCREMENT=16 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci |
+ 
+| client_tech_contacts | CREATE TABLE `client_tech_contacts` (
+
+  `id` int NOT NULL AUTO_INCREMENT,
+
+  `client_tech_map_id` int NOT NULL,
+
+  `email` varchar(255) NOT NULL,
+
+  PRIMARY KEY (`id`),
+
+  KEY `client_tech_map_id` (`client_tech_map_id`)
+
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci |
+ 
+| client_category_map | CREATE TABLE `client_category_map` (
+
+  `id` int NOT NULL AUTO_INCREMENT,
+
+  `client_id` int NOT NULL,
+
+  `category_id` int NOT NULL,
+
+  PRIMARY KEY (`id`),
+
+  KEY `client_id` (`client_id`),
+
+  KEY `category_id` (`category_id`),
+
+  CONSTRAINT `client_category_map_ibfk_1` FOREIGN KEY (`client_id`) REFERENCES `clients` (`id`),
+
+  CONSTRAINT `client_category_map_ibfk_2` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`)
+
+) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci |
+ 
+| subcategories | CREATE TABLE `subcategories` (
+
+  `id` int NOT NULL AUTO_INCREMENT,
+
+  `category_id` int NOT NULL,
+
+  `name` varchar(255) NOT NULL,
+
+  PRIMARY KEY (`id`),
+
+  UNIQUE KEY `category_id` (`category_id`,`name`),
+
+  CONSTRAINT `subcategories_ibfk_1` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`)
+
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci |
+ 
+| categories | CREATE TABLE `categories` (
+
+  `id` int NOT NULL AUTO_INCREMENT,
+
+  `name` varchar(255) NOT NULL,
+
+  PRIMARY KEY (`id`),
+
+  UNIQUE KEY `name` (`name`)
+
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci |
+ 
