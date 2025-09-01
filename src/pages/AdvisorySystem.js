@@ -446,40 +446,42 @@ This is an automated notification from the Advisory System.
     }
   }
 
+
+
+  // In AdvisorySystem.js
+
   const handleAddClientTech = async () => {
-    if (!newTechStackId && !selectedConfigCategory) {
-      alert("Please select a tech stack or category.");
+    if (!newTechStackId) {
+      alert("Please select a tech stack.");
       return;
     }
-
-    const payload = {
-      tech_stack_id: newTechStackId || null,
-      category_name: selectedConfigCategory || null,
-      version: "*"
-    };
-
     try {
-      await fetch(`http://localhost:5000/api/clients/${configuringClient.id}/tech`, {
+      const response = await fetch(`http://localhost:5000/api/clients/${configuringClient.id}/tech`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ tech_stack_id: newTechStackId, version: "*" }),
       });
 
-      alert("Tech stack assigned successfully!");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to add technology.");
+      }
 
-      // Clear form
+      const newTechDetail = await response.json();
+
+      // THIS IS THE DEBUGGING LINE
+      console.log("Data received from backend:", newTechDetail);
+
+      setClientTechDetails(prevDetails => [...prevDetails, newTechDetail]);
+
       setNewTechStackId("");
       setSelectedConfigCategory("");
       setConfigSubCategories([]);
       setSelectedConfigSubCategory("");
 
-      // 🔁 Refresh assigned techs
-      const response = await fetch(`http://localhost:5000/api/clients/${configuringClient.id}/tech`);
-      const data = await response.json();
-      setClientTechDetails(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Failed to add tech:", error);
-      alert("Failed to assign tech stack.");
+      alert(error.message);
     }
   };
 
@@ -1208,7 +1210,8 @@ This is an automated notification from the Advisory System.
                     <div key={tech.id} className="tech-assignment-card">
                       <div className="tech-assignment-header">
                         <h4 className="tech-name">
-                          {tech.name || "Unnamed Technology"} <span className="tech-type">({tech.type})</span>
+                          {/* FIX: Use the correct property 'tech_stack_name' */}
+                          {tech.tech_stack_name}
                         </h4>
                         <button
                           onClick={() => handleDeleteClientTech(tech.id)}

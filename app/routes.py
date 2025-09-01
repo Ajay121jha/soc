@@ -1477,63 +1477,67 @@ def setup_routes(app):
 
 
 
-
-
+    # In app/routes.py
 
     @app.route("/api/clients/<int:client_id>/tech", methods=["GET", "POST"])
-    def client_tech(client_id):
+    def manage_client_tech(client_id):
+        """Manages the technologies assigned to a specific client."""
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
+        
         if request.method == "GET":
-            try:
-                query = """
-                SELECT ctm.id, ts.name AS tech_stack_name
+            query = """
+                SELECT ctm.id, ts.name as tech_stack_name, ctm.version
                 FROM client_tech_map ctm
                 JOIN tech_stacks ts ON ctm.tech_stack_id = ts.id
                 WHERE ctm.client_id = %s
-                """
-                cursor.execute(query, (client_id,))
-                return jsonify(cursor.fetchall())
-            except Exception as e:
-                return jsonify({"error": str(e)}), 500
-            finally:
-                cursor.close()
-                conn.close()
+            """
+            cursor.execute(query, (client_id,))
+            tech_details = cursor.fetchall()
+            # The 'contacts' logic was removed for clarity as it's handled elsewhere
+            conn.close()
+            return jsonify(tech_details)
 
         if request.method == "POST":
             data = request.get_json()
             tech_stack_id = data.get("tech_stack_id")
-            category_name = data.get("category_name")
-            version = data.get("version", "*")
-
-            if not tech_stack_id and not category_name:
-                return jsonify({"error": "Missing tech_stack_id or category_name"}), 400
-
+            version = data.get("version")
+            if not tech_stack_id or not version:
+                return jsonify({"error": "tech_stack_id and version are required"}), 400
+            
             try:
-                if tech_stack_id:
-                    cursor.execute(
-                        "INSERT INTO client_tech_map (client_id, tech_stack_id, version) VALUES (%s, %s, %s)",
-                        (client_id, tech_stack_id, version)
-                    )
-                elif category_name:
-                    cursor.execute(
-                        "INSERT INTO client_category_map (client_id, category_id) SELECT %s, id FROM categories WHERE name = %s",
-                        (client_id, category_name)
-                    )
+                # Insert the new assignment
+                cursor.execute(
+                    "INSERT INTO client_tech_map (client_id, tech_stack_id, version) VALUES (%s, %s, %s)",
+                    (client_id, tech_stack_id, version)
+                )
+                new_assignment_id = cursor.lastrowid
                 conn.commit()
-                return jsonify({"message": "Assignment successful"}), 201
-            except Exception as e:
-                
-                import traceback
-                traceback.print_exc()
+
+                # Now, fetch the full details of the new assignment, including the name
+                query = """
+                    SELECT ctm.id, ts.name as tech_stack_name, ctm.version
+                    FROM client_tech_map ctm
+                    JOIN tech_stacks ts ON ctm.tech_stack_id = ts.id
+                    WHERE ctm.id = %s
+                """
+                cursor.execute(query, (new_assignment_id,))
+                new_tech_detail = cursor.fetchone()
+                return jsonify(new_tech_detail), 201
+
+            except mysql.connector.Error as err:
                 conn.rollback()
-                
-
-                return jsonify({"error": str(e)}), 500
+                # Handle duplicate entry error (code 1062)
+                if err.errno == 1062:
+                    return jsonify({"error": "This technology is already assigned to the client."}), 409
+                return jsonify({"error": f"Database error: {err}"}), 500
+            except Exception as e:
+                conn.rollback()
+                return jsonify({"error": f"Failed to assign tech stack: {e}"}), 500
             finally:
-                cursor.close()
-                conn.close()
-
+                if conn and conn.is_connected():
+                    cursor.close()
+                    conn.close()
 
 
 
@@ -1883,3 +1887,54 @@ def setup_routes(app):
         finally:
             cursor.close()
             conn.close()
+
+
+
+
+
+    # In app/routes.py
+
+# Add this new route anywhere inside the setup_routes(app) function
+
+    @app.route('/api/tech-hierarchy', methods=['GET'])
+    def get_tech_hierarchy():
+        """
+        Fetches the structured list of categories and their sub-categories.
+        """
+        conn = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+
+            # Fetch all categories that are parents (not sub-categories themselves)
+            cursor.execute("SELECT id, name FROM categories")
+            categories = cursor.fetchall()
+            
+            # Fetch all sub-categories and group them by their parent category_id
+            cursor.execute("SELECT category_id, name FROM subcategories ORDER BY name")
+            subcategories = cursor.fetchall()
+
+            # Create a dictionary to easily look up sub-categories
+            sub_map = {}
+            for sub in subcategories:
+                parent_id = sub['category_id']
+                if parent_id not in sub_map:
+                    sub_map[parent_id] = []
+                sub_map[parent_id].append(sub['name'])
+
+            # Build the final hierarchy structure
+            hierarchy = []
+            for cat in categories:
+                hierarchy.append({
+                    "name": cat['name'],
+                    "subcategories": sub_map.get(cat['id'], []) # Get sub-categories or an empty list
+                })
+
+            return jsonify(hierarchy)
+            
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        finally:
+            if conn and conn.is_connected():
+                cursor.close()
+                conn.close()
