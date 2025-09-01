@@ -30,8 +30,8 @@ const KnowledgeBase = () => {
     latest_firmware_version: "",
     end_of_support: "",
     integration_with_pim_tacacs: "",
-    rac_no: "",           // ✅ corrected
-    rac_qr_code: "",      // ✅ corrected
+    rac_no: "",           
+    rac_qr_code: "",      
     device_position: "",
     device_qr: "",
     status: ""

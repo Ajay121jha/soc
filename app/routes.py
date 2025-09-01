@@ -1523,7 +1523,12 @@ def setup_routes(app):
                 conn.commit()
                 return jsonify({"message": "Assignment successful"}), 201
             except Exception as e:
+                
+                import traceback
+                traceback.print_exc()
                 conn.rollback()
+                
+
                 return jsonify({"error": str(e)}), 500
             finally:
                 cursor.close()
@@ -1549,26 +1554,42 @@ def setup_routes(app):
     def get_client_tech_assignments(client_id):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        if request.method == "GET":
-            try:
-                query = """
-                SELECT 
-                    ctm.id, 
-                    ts.name AS tech_stack_name,
-                    ts.category AS category_name,
-                    ts.subcategory AS subcategory_name
+        try:
+            assignments = []
+
+            # Tech stacks
+            cursor.execute("""
+                SELECT ctm.id, 'tech_stack' AS type, ts.name AS name
                 FROM client_tech_map ctm
                 JOIN tech_stacks ts ON ctm.tech_stack_id = ts.id
                 WHERE ctm.client_id = %s
-                """
-                cursor.execute(query, (client_id,))
-                return jsonify(cursor.fetchall())
-            except Exception as e:
-                print("Error fetching tech stacks:", e)
-                return jsonify([])  # Return empty list instead of 500
-            finally:
-                cursor.close()
-                conn.close()
+            """, (client_id,))
+            assignments.extend(cursor.fetchall())
+
+            # Subcategories
+            cursor.execute("""
+                SELECT csm.id, 'subcategory' AS type, sc.name AS name
+                FROM client_subcategory_map csm
+                JOIN subcategories sc ON csm.subcategory_id = sc.id
+                WHERE csm.client_id = %s
+            """, (client_id,))
+            assignments.extend(cursor.fetchall())
+
+            # Categories
+            cursor.execute("""
+                SELECT ccm.id, 'category' AS type, c.name AS name
+                FROM client_category_map ccm
+                JOIN categories c ON ccm.category_id = c.id
+                WHERE ccm.client_id = %s
+            """, (client_id,))
+            assignments.extend(cursor.fetchall())
+
+            return jsonify(assignments)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()
 
 
 
