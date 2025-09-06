@@ -120,3 +120,57 @@ CREATE TABLE `clusters` (
   `cluster` int NOT NULL,
   PRIMARY KEY (`id`)
 );
+
+
+
+
+
+
+
+Suggestions to Improve the Escalation Matrix
+1. Add Contact Roles and Tags
+Instead of just L1, L2, L3, allow tagging contacts with roles like:
+Security Lead
+Infrastructure Manager
+Compliance Officer
+This helps in filtering and targeting advisories better.
+2. Group Contacts by Department or Region
+If your clients are large organizations:
+Add fields like department, region, or location.
+Filter escalation contacts based on these fields.
+3. Support Multiple Contacts per Level with Priority
+Allow assigning multiple contacts per level with a priority order:
+ 
+4. Add Contact Validation and Status
+Show if the email is verified or bounced.
+Add a status like active, inactive, or pending.
+5. Audit Trail for Changes
+Log who added/removed a contact and when. This helps in compliance and debugging.
+6. Bulk Import/Export Contacts
+Allow CSV upload/download for escalation contacts:
+Useful for onboarding large clients.
+Can be integrated with Excel or Google Sheets.
+7. Escalation Rules Engine
+Define rules like:
+“If advisory is urgent, notify L1 and L2.”
+“If advisory is informational, notify only L3.”
+This can be a JSON-based config or UI-driven.
+8. Email Preview Enhancements
+Add rich formatting (HTML preview).
+Allow custom CC/BCC.
+Support scheduling emails (e.g., send at 9 AM next day).
+9. Contact Notes and History
+Allow adding notes per contact:
+“This contact prefers advisories only on Fridays.”
+Also show history of advisories sent to each contact.
+🧩 UI/UX Enhancements
+Search and Filter Contacts: Add a search bar to quickly find contacts.
+Inline Editing: Allow editing email or level directly in the list.
+Confirmation Modals: Add confirmation before deleting contacts.
+🛠 Backend Suggestions
+Use a normalized table like:
+ 
+Add API endpoints for:
+Bulk import/export
+Role-based filtering
+Audit logs
