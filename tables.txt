@@ -174,3 +174,26 @@ Add API endpoints for:
 Bulk import/export
 Role-based filtering
 Audit logs
+
+
+
+
+
+
+
+ALTER TABLE client_tech_contacts
+ADD COLUMN level VARCHAR(10) NOT NULL DEFAULT 'L1',
+ADD COLUMN role VARCHAR(255) DEFAULT 'Not Assigned',
+ADD COLUMN department VARCHAR(255) DEFAULT 'General',
+ADD COLUMN location VARCHAR(255) DEFAULT 'Headquarters',
+ADD COLUMN priority INT DEFAULT 1,
+ADD COLUMN tags TEXT;
+
+
+
+
+
+
+
+
+
