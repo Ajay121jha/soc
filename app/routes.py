@@ -1299,6 +1299,31 @@ def setup_routes(app):
 
 
 
+    @app.route("/api/tech-stacks", methods=["POST"])
+    def add_tech_stack():
+        data = request.get_json()
+        name = data.get("name")
+        subcategory_id = data.get("subcategory_id")
+
+        if not name or not subcategory_id:
+            return jsonify({"error": "Name and subcategory_id are required"}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("INSERT INTO tech_stacks (name, subcategory_id) VALUES (%s, %s)", (name, subcategory_id))
+            conn.commit()
+            return jsonify({"message": "Tech stack added successfully"}), 201
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()
+
+
+
+
 
 
 
@@ -1479,65 +1504,48 @@ def setup_routes(app):
 
     # In app/routes.py
 
-    @app.route("/api/clients/<int:client_id>/tech", methods=["GET", "POST"])
-    def manage_client_tech(client_id):
-        """Manages the technologies assigned to a specific client."""
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        
-        if request.method == "GET":
-            query = """
-                SELECT ctm.id, ts.name as tech_stack_name, ctm.version
-                FROM client_tech_map ctm
-                JOIN tech_stacks ts ON ctm.tech_stack_id = ts.id
-                WHERE ctm.client_id = %s
-            """
-            cursor.execute(query, (client_id,))
-            tech_details = cursor.fetchall()
-            # The 'contacts' logic was removed for clarity as it's handled elsewhere
-            conn.close()
-            return jsonify(tech_details)
+    @app.route("/api/clients/<int:client_id>/tech", methods=["POST"])
+    def assign_client_tech(client_id):
+        data = request.get_json()
+        tech_stack_id = data.get("tech_stack_id")
+        subcategory_id = data.get("subcategory_id")
+        category_name = data.get("category_name")
+        version = data.get("version", "*")
 
-        if request.method == "POST":
-            data = request.get_json()
-            tech_stack_id = data.get("tech_stack_id")
-            version = data.get("version")
-            if not tech_stack_id or not version:
-                return jsonify({"error": "tech_stack_id and version are required"}), 400
-            
-            try:
-                # Insert the new assignment
+        if not tech_stack_id and not subcategory_id and not category_name:
+            return jsonify({"error": "Missing tech_stack_id, subcategory_id, or category_name"}), 400
+
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            if tech_stack_id:
                 cursor.execute(
                     "INSERT INTO client_tech_map (client_id, tech_stack_id, version) VALUES (%s, %s, %s)",
                     (client_id, tech_stack_id, version)
                 )
-                new_assignment_id = cursor.lastrowid
-                conn.commit()
+            elif subcategory_id:
+                cursor.execute(
+                    "INSERT INTO client_subcategory_map (client_id, subcategory_id) VALUES (%s, %s)",
+                    (client_id, subcategory_id)
+                )
+            elif category_name:
+                cursor.execute(
+                    "INSERT INTO client_category_map (client_id, category_id) SELECT %s, id FROM categories WHERE name = %s",
+                    (client_id, category_name)
+                )
 
-                # Now, fetch the full details of the new assignment, including the name
-                query = """
-                    SELECT ctm.id, ts.name as tech_stack_name, ctm.version
-                    FROM client_tech_map ctm
-                    JOIN tech_stacks ts ON ctm.tech_stack_id = ts.id
-                    WHERE ctm.id = %s
-                """
-                cursor.execute(query, (new_assignment_id,))
-                new_tech_detail = cursor.fetchone()
-                return jsonify(new_tech_detail), 201
+            conn.commit()
+            return jsonify({"message": "Assignment successful"}), 201
 
-            except mysql.connector.Error as err:
-                conn.rollback()
-                # Handle duplicate entry error (code 1062)
-                if err.errno == 1062:
-                    return jsonify({"error": "This technology is already assigned to the client."}), 409
-                return jsonify({"error": f"Database error: {err}"}), 500
-            except Exception as e:
-                conn.rollback()
-                return jsonify({"error": f"Failed to assign tech stack: {e}"}), 500
-            finally:
-                if conn and conn.is_connected():
-                    cursor.close()
-                    conn.close()
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()
+
+
 
 
 
@@ -1782,22 +1790,74 @@ def setup_routes(app):
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-
             query = "DELETE FROM client_tech_map WHERE id = %s"
             cursor.execute(query, (client_tech_map_id,))
             conn.commit()
-
             if cursor.rowcount == 0:
                 return jsonify({"error": "No tech stack assignment found with that ID."}), 404
-
             return jsonify({"message": "Tech stack assignment deleted successfully"}), 200
-
         except Exception as e:
             conn.rollback()
             return jsonify({"error": str(e)}), 500
         finally:
             cursor.close()
             conn.close()
+
+
+
+
+
+
+
+
+    @app.route('/api/client-subcategory/<int:map_id>', methods=['DELETE'])
+    def delete_client_subcategory(map_id):
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM client_subcategory_map WHERE id = %s", (map_id,))
+            conn.commit()
+            if cursor.rowcount == 0:
+                return jsonify({"error": "No subcategory assignment found with that ID."}), 404
+            return jsonify({"message": "Subcategory assignment deleted successfully"}), 200
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()
+
+
+
+
+
+
+
+
+
+    @app.route('/api/client-category/<int:map_id>', methods=['DELETE'])
+    def delete_client_category(map_id):
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM client_category_map WHERE id = %s", (map_id,))
+            conn.commit()
+            if cursor.rowcount == 0:
+                return jsonify({"error": "No category assignment found with that ID."}), 404
+            return jsonify({"message": "Category assignment deleted successfully"}), 200
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()
+
+
+
+
+
+
+
 
 
     @app.route('/api/clients/<int:client_id>/advisories', methods=['GET'])
@@ -1891,50 +1951,76 @@ def setup_routes(app):
 
 
 
+    @app.route("/api/clients/<int:client_id>/subcategories", methods=["POST"])
+    def assign_subcategory_to_client(client_id):
+        data = request.get_json()
+        subcategory_id = data.get("subcategory_id")
+        if not subcategory_id:
+            return jsonify({"error": "subcategory_id is required"}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO client_subcategory_map (client_id, subcategory_id) VALUES (%s, %s)",
+                (client_id, subcategory_id)
+            )
+            conn.commit()
+            return jsonify({"message": "Subcategory assigned successfully"}), 201
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()
+
+
+
+
 
     # In app/routes.py
 
 # Add this new route anywhere inside the setup_routes(app) function
 
-    @app.route('/api/tech-hierarchy', methods=['GET'])
-    def get_tech_hierarchy():
-        """
-        Fetches the structured list of categories and their sub-categories.
-        """
-        conn = None
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor(dictionary=True)
+    # @app.route('/api/tech-hierarchy', methods=['GET'])
+    # def get_tech_hierarchy():
+    #     """
+    #     Fetches the structured list of categories and their sub-categories.
+    #     """
+    #     conn = None
+    #     try:
+    #         conn = get_db_connection()
+    #         cursor = conn.cursor(dictionary=True)
 
-            # Fetch all categories that are parents (not sub-categories themselves)
-            cursor.execute("SELECT id, name FROM categories")
-            categories = cursor.fetchall()
+    #         # Fetch all categories that are parents (not sub-categories themselves)
+    #         cursor.execute("SELECT id, name FROM categories")
+    #         categories = cursor.fetchall()
             
-            # Fetch all sub-categories and group them by their parent category_id
-            cursor.execute("SELECT category_id, name FROM subcategories ORDER BY name")
-            subcategories = cursor.fetchall()
+    #         # Fetch all sub-categories and group them by their parent category_id
+    #         cursor.execute("SELECT category_id, name FROM subcategories ORDER BY name")
+    #         subcategories = cursor.fetchall()
 
-            # Create a dictionary to easily look up sub-categories
-            sub_map = {}
-            for sub in subcategories:
-                parent_id = sub['category_id']
-                if parent_id not in sub_map:
-                    sub_map[parent_id] = []
-                sub_map[parent_id].append(sub['name'])
+    #         # Create a dictionary to easily look up sub-categories
+    #         sub_map = {}
+    #         for sub in subcategories:
+    #             parent_id = sub['category_id']
+    #             if parent_id not in sub_map:
+    #                 sub_map[parent_id] = []
+    #             sub_map[parent_id].append(sub['name'])
 
-            # Build the final hierarchy structure
-            hierarchy = []
-            for cat in categories:
-                hierarchy.append({
-                    "name": cat['name'],
-                    "subcategories": sub_map.get(cat['id'], []) # Get sub-categories or an empty list
-                })
+    #         # Build the final hierarchy structure
+    #         hierarchy = []
+    #         for cat in categories:
+    #             hierarchy.append({
+    #                 "name": cat['name'],
+    #                 "subcategories": sub_map.get(cat['id'], []) # Get sub-categories or an empty list
+    #             })
 
-            return jsonify(hierarchy)
+    #         return jsonify(hierarchy)
             
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-        finally:
-            if conn and conn.is_connected():
-                cursor.close()
-                conn.close()
+    #     except Exception as e:
+    #         return jsonify({"error": str(e)}), 500
+    #     finally:
+    #         if conn and conn.is_connected():
+    #             cursor.close()
+    #             conn.close()

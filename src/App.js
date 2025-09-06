@@ -9,6 +9,7 @@ import ShiftHandover from "./pages/ShiftHandover";
 import KnowledgeBase from "./pages/KnowledgeBase";
 import OperationRunbook from "./pages/OperationRunbook";
 import AdvisorySystem from "./pages/AdvisorySystem";
+// import EscalationMatrixPage from "./pages/EscalationMatrixPage";
 
 // Function to check authentication
 const isAuthenticated = () => {
@@ -30,6 +31,8 @@ function App() {
         <Route path="/knowledge_base" element={<ProtectedRoute element={<KnowledgeBase />} />} />
         <Route path="/operation_runbook" element={<ProtectedRoute element={<OperationRunbook />} />} />
         <Route path="/advisory_system" element={<ProtectedRoute element={<AdvisorySystem />} />} />
+        {/* <Route path="/escalation_matrix" element={<ProtectedRoute element={<EscalationMatrixPage />} />} /> */}
+
         <Route index element={<HomePage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />

@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   Sparkles,
 } from "lucide-react"
+import { Link } from "react-router-dom";
 import "../styles/Advisory.css"
 import FormattedAdvisoryView from "./FormattedAdvisoryView"
 
@@ -57,6 +58,18 @@ export default function AdvisorySystem() {
   const [clientSearchTerm, setClientSearchTerm] = useState("")
   const [viewingAdvisory, setViewingAdvisory] = useState(null)
   const [activeTab, setActiveTab] = useState("clients")
+
+
+  //adding new category and subcategory
+  // const [newCategoryName, setNewCategoryName] = useState("");
+  // const [newSubcategoryName, setNewSubcategoryName] = useState("");
+
+
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newSubCategoryName, setNewSubCategoryName] = useState("");
+  const [newTechnologyName, setNewTechnologyName] = useState("");
+
+
 
   // --- Advisory Creation Form State ---
   const [newAdvisory, setNewAdvisory] = useState(initialAdvisoryState)
@@ -138,14 +151,7 @@ export default function AdvisorySystem() {
 
 
 
-  useEffect(() => {
-    const fetchCategories = async () => {
-      const res = await fetch("http://localhost:5000/api/categories");
-      const data = await res.json();
-      setCategories(data);
-    };
-    fetchCategories();
-  }, []);
+
 
 
 
@@ -166,6 +172,25 @@ export default function AdvisorySystem() {
 
 
 
+
+
+
+
+  // Move this to the top-level scope of your component
+  const fetchCategories = async () => {
+    try {
+      const res = await fetch("http://localhost:5000/api/categories");
+      const data = await res.json();
+      setCategories(data);
+    } catch (error) {
+      console.error("Error fetching categories:", error);
+    }
+  };
+
+  // Then keep your useEffect as-is
+  useEffect(() => {
+    fetchCategories();
+  }, []);
 
 
 
@@ -414,6 +439,7 @@ This is an automated notification from the Advisory System.
 
 
 
+
   const handleSubmitAdvisory = async (e) => {
     e.preventDefault()
     const payload = { ...newAdvisory, version: "*" };
@@ -448,42 +474,140 @@ This is an automated notification from the Advisory System.
 
 
 
-  // In AdvisorySystem.js
+
 
   const handleAddClientTech = async () => {
-    if (!newTechStackId) {
-      alert("Please select a tech stack.");
+    if (!newTechStackId && !selectedConfigCategory && !selectedConfigSubCategory) {
+      alert("Please select a tech stack, subcategory, or category.");
       return;
     }
+
+    // Get category name from ID
+    const selectedCategoryObj = categories.find(cat => cat.id === selectedConfigCategory);
+    const categoryName = selectedCategoryObj?.name || null;
+
+    const payload = {
+      tech_stack_id: newTechStackId || null,
+      subcategory_id: selectedConfigSubCategory || null,
+      category_name: categoryName,
+      version: "*"
+    };
+
+
+
     try {
       const response = await fetch(`http://localhost:5000/api/clients/${configuringClient.id}/tech`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tech_stack_id: newTechStackId, version: "*" }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to add technology.");
+        throw new Error(errorData.error || "Failed to assign technology.");
       }
 
-      const newTechDetail = await response.json();
+      alert("Technology assigned successfully!");
 
-      // THIS IS THE DEBUGGING LINE
-      console.log("Data received from backend:", newTechDetail);
-
-      setClientTechDetails(prevDetails => [...prevDetails, newTechDetail]);
 
       setNewTechStackId("");
       setSelectedConfigCategory("");
       setConfigSubCategories([]);
       setSelectedConfigSubCategory("");
+      setTechStacks([]);
 
+
+      // Refresh assigned techs
+      const data = await fetch(`http://localhost:5000/api/clients/${configuringClient.id}/tech`)
+        .then(res => res.json());
+
+      setClientTechDetails(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error("Failed to add tech:", error);
+      console.error("Failed to assign tech:", error);
+      alert("Failed to assign technology.");
+    }
+  };
+
+
+
+
+
+  const handleAddCategorySubTech = async (e) => {
+    e.preventDefault();
+
+    if (!newCategoryName.trim()) {
+      alert("Please enter a category name.");
+      return;
+    }
+
+    try {
+      const categoryRes = await fetch("http://localhost:5000/api/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newCategoryName }),
+      });
+      const categoryData = await categoryRes.json();
+      if (!categoryRes.ok) throw new Error(categoryData.error || "Failed to add category");
+
+      if (newSubCategoryName.trim()) {
+        const subRes = await fetch("http://localhost:5000/api/subcategories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ category_id: categoryData.id, name: newSubCategoryName }),
+        });
+        const subData = await subRes.json();
+        if (!subRes.ok) throw new Error(subData.error || "Failed to add subcategory");
+
+        if (newTechnologyName.trim()) {
+          const techRes = await fetch("http://localhost:5000/api/tech-stacks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ subcategory_id: subData.id, name: newTechnologyName }),
+          });
+          const techData = await techRes.json();
+          if (!techRes.ok) throw new Error(techData.error || "Failed to add technology");
+        }
+      }
+
+      alert("Tech hierarchy added successfully!");
+      setNewCategoryName("");
+      setNewSubCategoryName("");
+      setNewTechnologyName("");
+      fetchCategories(); // Refresh dropdowns
+    } catch (error) {
+      console.error("Error adding tech hierarchy:", error);
       alert(error.message);
     }
   };
+
+
+
+
+
+
+  // const handleAddCategory = async (name) => {
+  //   const res = await fetch("http://localhost:5000/api/categories", {
+  //     method: "POST",
+  //     headers: { "Content-Type": "application/json" },
+  //     body: JSON.stringify({ name }),
+  //   });
+  //   const result = await res.json();
+  //   alert(result.message || "Category added");
+  // };
+
+  // const handleAddSubcategory = async (categoryId, name) => {
+  //   const res = await fetch("http://localhost:5000/api/subcategories", {
+  //     method: "POST",
+  //     headers: { "Content-Type": "application/json" },
+  //     body: JSON.stringify({ category_id: categoryId, name }),
+  //   });
+  //   const result = await res.json();
+  //   alert(result.message || "Subcategory added");
+  // };
+
+
+
+
 
 
   const handleAddEscalationContact = async (e) => {
@@ -529,30 +653,27 @@ This is an automated notification from the Advisory System.
   };
 
 
-  const handleAddNewTechStack = async (e) => {
-    e.preventDefault()
-    if (!newTechName.trim()) {
-      alert("Please enter a name for the new tech stack.")
-      return
-    }
-    try {
-      const response = await fetch("http://localhost:5000/api/tech-stacks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newTechName }),
-      })
-      const result = await response.json()
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to add tech stack")
-      }
-      setNewTechName("")
-      fetchTechStacks()
-      alert(`Successfully added '${result.name}'`)
-    } catch (error) {
-      console.error("Error adding new tech stack:", error)
-      alert(error.message)
-    }
-  }
+  // const handleAddNewTechStack = async (e) => {
+  //   e.preventDefault();
+  //   if (!selectedSubCategory || !newTechName.trim()) {
+  //     alert("Please select a subcategory and enter a tech name.");
+  //     return;
+  //   }
+  //   try {
+  //     const response = await fetch("http://localhost:5000/api/tech-stacks", {
+  //       method: "POST",
+  //       headers: { "Content-Type": "application/json" },
+  //       body: JSON.stringify({ subcategory_id: selectedSubCategory, name: newTechName }),
+  //     });
+  //     const result = await response.json();
+  //     if (!response.ok) throw new Error(result.error);
+  //     alert(`Successfully added '${result.name}'`);
+  //     setNewTechName("");
+  //     fetchTechStacks(selectedSubCategory); // Refresh list
+  //   } catch (error) {
+  //     alert(error.message);
+  //   }
+  // };
 
   const fetchRssFeeds = async (category) => {
     if (!category) {
@@ -645,25 +766,39 @@ This is an automated notification from the Advisory System.
     }
   }
 
-  const handleDeleteClientTech = async (clientTechMapId) => {
-    if (!window.confirm("Are you sure you want to delete this tech stack assignment?")) {
-      return
+  const handleDeleteClientTech = async (tech) => {
+    if (!window.confirm("Are you sure you want to delete this tech stack assignment?")) return;
+    console.log("Deleting tech:", tech);
+    let endpoint = "";
+    switch (tech.type?.toLowerCase()) {
+      case "tech_stack":
+        endpoint = `client-tech/${tech.id}`;
+        break;
+      case "subcategory":
+        endpoint = `client-subcategory/${tech.id}`;
+        break;
+      case "category":
+        endpoint = `client-category/${tech.id}`;
+        break;
+      default:
+        alert("Unknown tech type: " + tech.type);
+        return;
     }
+
     try {
-      const response = await fetch(`http://localhost:5000/api/client-tech/${clientTechMapId}`, {
+      const response = await fetch(`http://localhost:5000/api/${endpoint}`, {
         method: "DELETE",
-      })
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to delete tech stack assignment.")
-      }
-      alert("Tech stack assignment deleted successfully!")
-      openClientConfigModal(configuringClient)
+
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to delete assignment.");
+      alert("Assignment deleted successfully!");
+      openClientConfigModal(configuringClient);
     } catch (error) {
-      console.error("Failed to delete tech stack:", error)
-      alert(error.message)
+      console.error("Failed to delete assignment:", error);
+      alert(error.message);
     }
-  }
+  };
 
   const handleDeleteAdvisory = async (advisoryId) => {
     if (!window.confirm("Are you sure you want to delete this advisory?")) return
@@ -692,6 +827,15 @@ This is an automated notification from the Advisory System.
         return <AlertTriangle size={16} className="text-gray-600" />
     }
   }
+
+
+
+
+
+
+
+
+
 
   const filteredClients = clients.filter((client) => client.name.toLowerCase().includes(clientSearchTerm.toLowerCase()))
   const selectedClientName = clients.find((c) => c.id === Number(selectedClientId))?.name || ""
@@ -744,7 +888,7 @@ This is an automated notification from the Advisory System.
               <div className="client-list">
                 {filteredClients.map((client) => (
                   <div
-                    key={client.id}
+                    key={`client-${client.id}`}
                     className={`client-item ${selectedClientId === client.id ? "selected" : ""}`}
                     onClick={() => setSelectedClientId(client.id)}
                   >
@@ -928,6 +1072,15 @@ This is an automated notification from the Advisory System.
               </form>
             </div>
           )}
+
+
+
+
+          {/* <Link to="/escalation_matrix" className="tab-button">
+            <ShieldAlert size={16} /> Escalation Matrix
+          </Link> */}
+
+
 
           {activeTab === "escalation" && (
             <div className="escalation-tab">
@@ -1209,12 +1362,13 @@ This is an automated notification from the Advisory System.
                   clientTechDetails.map((tech) => (
                     <div key={tech.id} className="tech-assignment-card">
                       <div className="tech-assignment-header">
+
                         <h4 className="tech-name">
-                          {/* FIX: Use the correct property 'tech_stack_name' */}
-                          {tech.tech_stack_name}
+                          {tech.name || "Unnamed Technology"} <span className="tech-type">({tech.type})</span>
                         </h4>
+
                         <button
-                          onClick={() => handleDeleteClientTech(tech.id)}
+                          onClick={() => handleDeleteClientTech(tech)}
                           className="delete-tech-btn"
                           title="Delete this tech stack"
                         >
@@ -1275,10 +1429,9 @@ This is an automated notification from the Advisory System.
 
                   </div>
                 )}
-                {configSubCategories.length > 0 && (
+                {techStacks.length > 0 && (
                   <div className="form-group">
                     <label className="form-label">Technology</label>
-
                     <select
                       className="form-select"
                       value={newTechStackId}
@@ -1292,9 +1445,9 @@ This is an automated notification from the Advisory System.
                         </option>
                       ))}
                     </select>
-
                   </div>
                 )}
+
 
                 <button onClick={handleAddClientTech} className="assign-btn">
                   <PlusCircle size={16} /> Assign
@@ -1315,17 +1468,77 @@ This is an automated notification from the Advisory System.
               </button>
             </div>
 
-            <form onSubmit={handleAddNewTechStack} className="add-tech-form">
+
+            {/* <div className="form-group">
+              <label className="form-label">New Category</label>
               <input
                 type="text"
-                placeholder="New Tech Name (e.g., Ubuntu)"
-                value={newTechName}
-                onChange={(e) => setNewTechName(e.target.value)}
+                placeholder="e.g., Security"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
                 className="form-input"
-                required
+              />
+              <button
+                onClick={async () => {
+                  await handleAddCategory(newCategoryName);
+                  setNewCategoryName("");
+                  const updated = await fetch("http://localhost:5000/api/categories");
+                  setCategories(await updated.json());
+                }}
+                className="add-tech-btn"
+              >
+                <PlusCircle size={16} /> Add Category
+              </button>
+            </div> */}
+            {/* 
+            {selectedCategory && (
+              <div className="form-group">
+                <label className="form-label">New Subcategory</label>
+                <input
+                  type="text"
+                  placeholder="e.g., Firewall"
+                  value={newSubcategoryName}
+                  onChange={(e) => setNewSubcategoryName(e.target.value)}
+                  className="form-input"
+                />
+                <button
+                  onClick={async () => {
+                    await handleAddSubcategory(selectedCategory, newSubcategoryName);
+                    setNewSubcategoryName("");
+                    const updated = await fetch(`http://localhost:5000/api/subcategories/${selectedCategory}`);
+                    setSubCategories(await updated.json());
+                  }}
+                  className="add-tech-btn"
+                >
+                  <PlusCircle size={16} /> Add Subcategory
+                </button>
+              </div>
+            )} */}
+
+            <form onSubmit={handleAddCategorySubTech} className="add-tech-hierarchy-form">
+              <input
+                type="text"
+                placeholder="New Category (e.g., Datacenter)"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                className="form-input"
+              />
+              <input
+                type="text"
+                placeholder="New Subcategory (optional)"
+                value={newSubCategoryName}
+                onChange={(e) => setNewSubCategoryName(e.target.value)}
+                className="form-input"
+              />
+              <input
+                type="text"
+                placeholder="New Technology (optional)"
+                value={newTechnologyName}
+                onChange={(e) => setNewTechnologyName(e.target.value)}
+                className="form-input"
               />
               <button type="submit" className="add-tech-btn">
-                <PlusCircle size={16} /> Add Tech
+                <PlusCircle size={16} /> Add Tech Hierarchy
               </button>
             </form>
 
@@ -1390,6 +1603,7 @@ This is an automated notification from the Advisory System.
                 <button onClick={handleDeleteRssFeeds} className="delete-feeds-btn">
                   Delete ({feedsToDelete.size}) Selected Feed(s)
                 </button>
+
               )}
 
               {!isDeleteMode && (

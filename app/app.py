@@ -4,7 +4,13 @@ from app.routes import setup_routes
 from app.db import init_db
 
 app = Flask(__name__)  
-CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "OPTIONS"], "allow_headers": "*"}})  
+
+CORS(app, resources={r"/*": {
+    "origins": "*",
+    "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    "allow_headers": "*"
+}})
+
 
 # Database Initialization
 init_db()
