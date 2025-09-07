@@ -20,6 +20,12 @@ import {
   Clock,
   ShieldAlert,
   Sparkles,
+  Save,
+  Filter,
+  Users2,
+  ListOrdered,
+  BookText,
+  Building
 } from "lucide-react"
 import { Link } from "react-router-dom";
 import "../styles/Advisory.css"
@@ -53,6 +59,8 @@ export default function AdvisorySystem() {
   const [advisories, setAdvisories] = useState([])
   const [isLoading, setIsLoading] = useState(true)
 
+  const topLevelCategories = techStacks.filter(tech => tech.parent_id === null);
+
   // --- UI and Filtering State ---
   const [selectedClientId, setSelectedClientId] = useState("")
   const [clientSearchTerm, setClientSearchTerm] = useState("")
@@ -85,8 +93,18 @@ export default function AdvisorySystem() {
 
   // --- Escalation Matrix State ---
   const [escalationContacts, setEscalationContacts] = useState({ L1: [], L2: [], L3: [] });
-  const [newEscalationContactEmail, setNewEscalationContactEmail] = useState("");
-  const [newEscalationContactLevel, setNewEscalationContactLevel] = useState("L1");
+  // const [newEscalationContactEmail, setNewEscalationContactEmail] = useState("");
+  // const [newEscalationContactLevel, setNewEscalationContactLevel] = useState("L1");
+  // --- ADD THE CODE BELOW ---
+  const [escalationRules, setEscalationRules] = useState([
+    { id: 1, condition: "Vulnerability Alert", actions: ["L1", "L2"] },
+    { id: 2, condition: "Security Patch", actions: ["L1"] },
+    { id: 3, condition: "Informational", actions: ["L3"] },
+  ])
+  const [editingContactId, setEditingContactId] = useState(null)
+  const [editedContactData, setEditedContactData] = useState(null)
+  const [contactSearch, setContactSearch] = useState("")
+  const [groupBy, setGroupBy] = useState("department")
 
 
   // --- RSS Feed State ---
@@ -141,7 +159,7 @@ export default function AdvisorySystem() {
 
   const fetchTechStacks = useCallback(async (subcategoryId) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/tech-stacks/${subcategoryId}`)
+      const res = await fetch(`http://localhost:5000/api/tech_stacks/${subcategoryId}`)
       setTechStacks(await res.json())
     } catch (error) {
       console.error("Error fetching tech stacks:", error)
@@ -610,28 +628,26 @@ This is an automated notification from the Advisory System.
 
 
 
-  const handleAddEscalationContact = async (e) => {
-    e.preventDefault();
-    if (!newEscalationContactEmail.trim() || !newEscalationContactEmail.includes("@")) {
+  // In the AdvisorySystem component, replace the old handlers with these
+
+  const handleAddEscalationContact = async (newContact) => {
+    // This function will now receive a full contact object
+    if (!newContact.email.trim() || !newContact.email.includes("@")) {
       alert("Please enter a valid email address.");
       return;
     }
     try {
-      const response = await fetch(`http://localhost:5000/api/clients/${selectedClientId}/escalation-contacts`, {
+      // NOTE: This assumes your backend endpoint is now at `/api/clients/${selectedClientId}/tech-contacts`
+      const response = await fetch(`http://localhost:5000/api/clients/${selectedClientId}/tech-contacts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: newEscalationContactEmail,
-          level: newEscalationContactLevel,
-        }),
+        body: JSON.stringify(newContact), // Send the whole object
       });
       if (!response.ok) {
         const err = await response.json();
         throw new Error(err.error || "Failed to add contact");
       }
-
-      setNewEscalationContactEmail("");
-      fetchEscalationMatrix();
+      fetchEscalationMatrix(); // Refresh data
     } catch (error) {
       console.error("Failed to add escalation contact:", error);
       alert(`Error: ${error.message}`);
@@ -641,7 +657,8 @@ This is an automated notification from the Advisory System.
   const handleDeleteEscalationContact = async (contactId) => {
     if (!window.confirm("Are you sure you want to delete this contact?")) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/escalation-contacts/${contactId}`, {
+      // NOTE: This assumes your backend endpoint for deleting is at `/api/tech-contacts/${contactId}`
+      const response = await fetch(`http://localhost:5000/api/tech-contacts/${contactId}`, {
         method: "DELETE",
       });
       if (!response.ok) throw new Error("Failed to delete contact");
@@ -653,27 +670,7 @@ This is an automated notification from the Advisory System.
   };
 
 
-  // const handleAddNewTechStack = async (e) => {
-  //   e.preventDefault();
-  //   if (!selectedSubCategory || !newTechName.trim()) {
-  //     alert("Please select a subcategory and enter a tech name.");
-  //     return;
-  //   }
-  //   try {
-  //     const response = await fetch("http://localhost:5000/api/tech-stacks", {
-  //       method: "POST",
-  //       headers: { "Content-Type": "application/json" },
-  //       body: JSON.stringify({ subcategory_id: selectedSubCategory, name: newTechName }),
-  //     });
-  //     const result = await response.json();
-  //     if (!response.ok) throw new Error(result.error);
-  //     alert(`Successfully added '${result.name}'`);
-  //     setNewTechName("");
-  //     fetchTechStacks(selectedSubCategory); // Refresh list
-  //   } catch (error) {
-  //     alert(error.message);
-  //   }
-  // };
+
 
   const fetchRssFeeds = async (category) => {
     if (!category) {
@@ -827,6 +824,244 @@ This is an automated notification from the Advisory System.
         return <AlertTriangle size={16} className="text-gray-600" />
     }
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  // In the AdvisorySystem component, before the `return (` line
+
+  const EscalationMatrixView = () => {
+    const handleStartEdit = (contact) => {
+      setEditingContactId(contact.id);
+      // Ensure tags are a string for the input field
+      setEditedContactData({ ...contact, tags: Array.isArray(contact.tags) ? contact.tags.join(', ') : contact.tags });
+    }
+    const handleCancelEdit = () => {
+      setEditingContactId(null);
+      setEditedContactData(null);
+    }
+    const handleSaveEdit = async (contactId) => {
+      try {
+        // Convert tags back to an array if they are a string before sending
+        const payload = { ...editedContactData, tags: editedContactData.tags.split(',').map(t => t.trim()) };
+        const response = await fetch(`http://localhost:5000/api/tech-contacts/${contactId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || 'Failed to save contact');
+        }
+        await fetchEscalationMatrix();
+      } catch (error) {
+        console.error("Error saving contact:", error);
+        alert(`Error: ${error.message}`);
+      } finally {
+        handleCancelEdit();
+      }
+    };
+    const handleFieldChange = (field, value) => {
+      setEditedContactData((prev) => ({ ...prev, [field]: value }));
+    }
+
+    const [newContactForm, setNewContactForm] = useState({
+      email: "",
+      level: "L1",
+      role: "Security Lead",
+      department: "Security",
+      priority: 1,
+      location: "Headquarters",
+      tags: "General",
+    })
+
+    const handleNewContactChange = (e) => {
+      const { name, value } = e.target
+      setNewContactForm((prev) => ({ ...prev, [name]: value }))
+    }
+
+    const handleAddNewContact = (e) => {
+      e.preventDefault()
+      const contactToAdd = {
+        ...newContactForm,
+        tags: newContactForm.tags.split(",").map(t => t.trim())
+      };
+      handleAddEscalationContact(contactToAdd);
+      setNewContactForm({ email: "", level: "L1", role: "Security Lead", department: "Security", priority: 1, location: "Headquarters", tags: "General" })
+    }
+
+    if (!selectedClientId) {
+      return (
+        <div className="empty-state">
+          <ShieldAlert size={48} className="empty-icon" />
+          <p className="empty-text">Please select a client to manage their escalation matrix.</p>
+        </div>
+      )
+    }
+
+    const allContacts = [...(escalationContacts.L1 || []), ...(escalationContacts.L2 || []), ...(escalationContacts.L3 || [])];
+    const filteredContacts = allContacts.filter(c => c.email.toLowerCase().includes(contactSearch.toLowerCase()) || (c.role && c.role.toLowerCase().includes(contactSearch.toLowerCase())));
+
+    const groupedContacts = filteredContacts.reduce((acc, contact) => {
+      const key = contact[groupBy] || 'Uncategorized';
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(contact);
+      return acc;
+    }, {});
+
+    return (
+      <div className="escalation-matrix-container">
+        <div className="main-header">
+          <h1 className="main-title">Escalation Matrix for {selectedClientName}</h1>
+        </div>
+        <div className="escalation-dashboard">
+          <div className="contact-management-panel">
+            <div className="panel-header">
+              <Users2 size={20} />
+              <h3>Contact Management</h3>
+            </div>
+            <div className="contact-toolbar">
+              <div className="search-wrapper">
+                <Search size={18} />
+                <input type="text" placeholder="Search contacts..." value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
+              </div>
+              <div className="filter-wrapper">
+                <Filter size={18} />
+                <select value={groupBy} onChange={e => setGroupBy(e.target.value)}>
+                  <option value="department">Group by Department</option>
+                  <option value="location">Group by Location</option>
+                  <option value="level">Group by Level</option>
+                </select>
+              </div>
+            </div>
+            <div className="contact-list-area">
+              {Object.keys(groupedContacts).sort().map(groupName => (
+                <div key={groupName} className="contact-group">
+                  <h4 className="group-title">{groupName}</h4>
+                  {groupedContacts[groupName].sort((a, b) => (a.priority || 99) - (b.priority || 99)).map(contact => (
+                    <div key={contact.id} className="contact-card">
+                      {editingContactId === contact.id ? (
+                        <div className="contact-edit-form">
+                          <input type="email" value={editedContactData.email} onChange={e => handleFieldChange('email', e.target.value)} />
+                          <input type="text" placeholder="Role" value={editedContactData.role} onChange={e => handleFieldChange('role', e.target.value)} />
+                          <select value={editedContactData.level} onChange={e => handleFieldChange('level', e.target.value)}>
+                            <option>L1</option><option>L2</option><option>L3</option>
+                          </select>
+                          <input type="number" placeholder="Priority" value={editedContactData.priority} onChange={e => handleFieldChange('priority', parseInt(e.target.value))} />
+                          <input type="text" placeholder="Department" value={editedContactData.department} onChange={e => handleFieldChange('department', e.target.value)} />
+                          <input type="text" placeholder="Location" value={editedContactData.location} onChange={e => handleFieldChange('location', e.target.value)} />
+                          <input type="text" placeholder="Tags (comma-separated)" value={editedContactData.tags} onChange={e => handleFieldChange('tags', e.target.value)} />
+                          <div className="contact-actions">
+                            <button className="action-btn save-btn" onClick={() => handleSaveEdit(contact.id)}><Save size={14} /></button>
+                            <button className="action-btn cancel-btn" onClick={handleCancelEdit}><X size={14} /></button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="contact-info">
+                            <span className={`level-indicator level-${contact.level.toLowerCase()}`}>{contact.level}</span>
+                            <div className="contact-details">
+                              <span className="contact-email">{contact.email}</span>
+                              <span className="contact-role">{contact.role}</span>
+                            </div>
+                            <div className="contact-tags">
+                              {contact.department && <span className="tag"><Building size={12} /> {contact.department}</span>}
+                              {contact.priority && <span className="tag"><ListOrdered size={12} /> P{contact.priority}</span>}
+                            </div>
+                          </div>
+                          <div className="contact-actions">
+                            <button className="action-btn edit-btn" onClick={() => handleStartEdit(contact)}><Edit3 size={14} /></button>
+                            <button className="action-btn delete-btn" onClick={() => handleDeleteEscalationContact(contact.id)}><Delete size={14} /></button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rules-actions-panel">
+            <div className="panel-header">
+              <BookText size={20} />
+              <h3>Escalation Rules & Actions</h3>
+            </div>
+            <div className="rules-engine-card">
+              <h4>Rules Engine</h4>
+              <div className="rules-list">
+                {escalationRules.map(rule => (
+                  <div key={rule.id} className="rule-item">
+                    <span><strong>IF</strong> {rule.condition}</span>
+                    <span><strong>THEN</strong> Notify {rule.actions.join(", ")}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="add-contact-card">
+              <h4>Add New Contact</h4>
+              <form onSubmit={handleAddNewContact} className="add-contact-form-main">
+                <input name="email" type="email" placeholder="Email Address" value={newContactForm.email} onChange={handleNewContactChange} required className="full-width-input" />
+                <div className="form-grid-2">
+                  <select name="level" value={newContactForm.level} onChange={handleNewContactChange}>
+                    <option>L1</option><option>L2</option><option>L3</option>
+                  </select>
+                  <input name="role" type="text" placeholder="Role (e.g., Security Lead)" value={newContactForm.role} onChange={handleNewContactChange} />
+                </div>
+                <div className="form-grid-2">
+                  <select name="department" value={newContactForm.department} onChange={handleNewContactChange}>
+                    <option>Security</option><option>IT Operations</option><option>Engineering</option><option>Management</option>
+                  </select>
+                  <input name="priority" type="number" placeholder="Priority" min="1" value={newContactForm.priority} onChange={handleNewContactChange} />
+                </div>
+                <input name="location" type="text" placeholder="Location (e.g., Headquarters)" value={newContactForm.location} onChange={handleNewContactChange} className="full-width-input" />
+                <input name="tags" type="text" placeholder="Tags (comma-separated)" value={newContactForm.tags} onChange={handleNewContactChange} className="full-width-input" />
+                <button type="submit" className="submit-btn full-width">
+                  <PlusCircle size={16} /> Add Contact
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1082,7 +1317,7 @@ This is an automated notification from the Advisory System.
 
 
 
-          {activeTab === "escalation" && (
+          {/* {activeTab === "escalation" && (
             <div className="escalation-tab">
               <h3 className="create-title">
                 Escalation Matrix for {selectedClientName || "..."}
@@ -1138,151 +1373,169 @@ This is an automated notification from the Advisory System.
                 </div>
               )}
             </div>
+          )} */}
+
+          {activeTab === "escalation" && (
+            <div className="escalation-tab-sidebar-placeholder">
+              <h3 className="create-title">Escalation Matrix</h3>
+              <p className="placeholder-text">
+                Manage the escalation matrix for <strong>{selectedClientName || "..."}</strong> in the main content area.
+              </p>
+            </div>
           )}
 
         </div>
       </aside>
 
       <main className="main-content">
-        <div className="main-header">
-          <h1 className="main-title">
-            {selectedClientName ? `Advisories for ${selectedClientName}` : "Select a Client"}
-          </h1>
-        </div>
+        {/* --- THIS IS THE MAIN CHANGE --- */}
+        {activeTab === "escalation" ? (
+          <EscalationMatrixView />
+        ) : (
+          <>
+            <div className="main-header">
+              <h1 className="main-title">
+                {selectedClientName ? `Advisories for ${selectedClientName}` : "Select a Client"}
+              </h1>
+            </div>
 
-        {isLoading && (
-          <div className="loading-state">
-            <div className="loading-spinner"></div>
-            <p>Loading advisories...</p>
-          </div>
-        )}
+            {isLoading && (
+              <div className="loading-state">
+                <div className="loading-spinner"></div>
+                <p>Loading advisories...</p>
+              </div>
+            )}
 
-        {!isLoading && advisories.length === 0 && (
-          <div className="empty-state">
-            <AlertTriangle size={48} className="empty-icon" />
-            <p className="empty-text">
-              {selectedClientId ? "No advisories found for this client." : "Please select a client to view advisories."}
-            </p>
-          </div>
-        )}
+            {!isLoading && advisories.length === 0 && (
+              <div className="empty-state">
+                <AlertTriangle size={48} className="empty-icon" />
+                <p className="empty-text">
+                  {selectedClientId ? "No advisories found for this client." : "Please select a client to view advisories."}
+                </p>
+              </div>
+            )}
 
-        <div className="advisory-grid">
-          {advisories.map((advisory) => (
-            <div key={advisory.id} className="advisory-card-enhanced" onClick={() => setViewingAdvisory(advisory)}>
-              <div className="advisory-card-header">
-                <div className="advisory-title-section">
-                  <h3 className="advisory-title">
-                    {advisory.update_type === "Advisory"
-                      ? "Feed Advisory"
-                      : advisory.update_type || "Consolidated Draft"}
-                  </h3>
-                  <div className="advisory-status">
-                    {getStatusIcon(advisory.status)}
-                    <span className={`status-text ${advisory.status?.toLowerCase()}`}>
-                      {advisory.status || "Unknown"}
-                    </span>
+            <div className="advisory-grid">
+              {advisories.map((advisory) => (
+                <div key={advisory.id} className="advisory-card-enhanced" onClick={() => setViewingAdvisory(advisory)}>
+                  <div className="advisory-card-header">
+                    <div className="advisory-title-section">
+                      <h3 className="advisory-title">
+                        {advisory.update_type === "Advisory"
+                          ? "Feed Advisory"
+                          : advisory.update_type || "Consolidated Draft"}
+                      </h3>
+                      <div className="advisory-status">
+                        {getStatusIcon(advisory.status)}
+                        <span className={`status-text ${advisory.status?.toLowerCase()}`}>
+                          {advisory.status || "Unknown"}
+                        </span>
+                      </div>
+                    </div>
+                    {advisory.status === "Draft" && <span className="draft-badge-enhanced">Draft</span>}
+                  </div>
+
+                  <div className="advisory-content">
+                    <p className="advisory-description">{stripHtml(advisory.description)}</p>
+                    <div className="advisory-meta">
+                      <span className="advisory-date">{new Date(advisory.timestamp).toLocaleDateString()}</span>
+                      <span className="advisory-service">{advisory.service_or_os}</span>
+                    </div>
+                  </div>
+
+                  <div className="advisory-actions">
+                    {advisory.status === "Draft" && (
+                      <button
+                        onClick={(e) => handleOpenEditModal(advisory, e)}
+                        className="action-btn edit-btn"
+                        title="Edit"
+                      >
+                        <Edit3 size={14} />
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openEmailModal(advisory)
+                      }}
+                      className="action-btn email-btn"
+                      title="Email Options"
+                    >
+                      <Mail size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setViewingAdvisory(advisory)
+                      }}
+                      className="action-btn view-btn"
+                      title="View Details"
+                    >
+                      <Eye size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeleteAdvisory(advisory.id)
+                      }}
+                      className="action-btn delete-btn"
+                      title="Delete Advisory"
+                    >
+                      <Delete size={14} />
+                    </button>
                   </div>
                 </div>
-                {advisory.status === "Draft" && <span className="draft-badge-enhanced">Draft</span>}
-              </div>
-
-              <div className="advisory-content">
-                <p className="advisory-description">{stripHtml(advisory.description)}</p>
-                <div className="advisory-meta">
-                  <span className="advisory-date">{new Date(advisory.timestamp).toLocaleDateString()}</span>
-                  <span className="advisory-service">{advisory.service_or_os}</span>
-                </div>
-              </div>
-
-              <div className="advisory-actions">
-                {advisory.status === "Draft" && (
-                  <button
-                    onClick={(e) => handleOpenEditModal(advisory, e)}
-                    className="action-btn edit-btn"
-                    title="Edit"
-                  >
-                    <Edit3 size={14} />
-                  </button>
-                )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    openEmailModal(advisory)
-                  }}
-                  className="action-btn email-btn"
-                  title="Email Options"
-                >
-                  <Mail size={14} />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setViewingAdvisory(advisory)
-                  }}
-                  className="action-btn view-btn"
-                  title="View Details"
-                >
-                  <Eye size={14} />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleDeleteAdvisory(advisory.id)
-                  }}
-                  className="action-btn delete-btn"
-                  title="Delete Advisory"
-                >
-                  <Delete size={14} />
-                </button>
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        )}
       </main>
 
-      <aside className="rss-sidebar">
-        <h2 className="rss-title">Latest News {selectedClientName && `for ${selectedClientName}`}</h2>
+      {activeTab !== "escalation" && (
+        <aside className="rss-sidebar">
+          <h2 className="rss-title">Latest News {selectedClientName && `for ${selectedClientName}`}</h2>
 
-        {isRssLoading ? (
-          <div className="rss-loading">
-            <div className="loading-spinner small"></div>
-            <p>Loading news...</p>
-          </div>
-        ) : rssItems.length === 0 ? (
-          <div className="rss-empty">
-            <Bell size={32} className="rss-empty-icon" />
-            <p className="rss-empty-text">
-              {selectedClientId ? "No items found in assigned feeds." : "Select a client to view news."}
-            </p>
-          </div>
-        ) : (
-          <div className="rss-items">
-            {rssItems.map((item) => (
-              <div key={item.id} className="rss-item">
-                <a href={item.link} target="_blank" rel="noopener noreferrer" className="rss-item-link">
-                  {item.title}
-                </a>
-                <p className="rss-item-summary">{item.summary}</p>
-                <div className="rss-item-meta">
-                  <span className="rss-item-date">{new Date(item.published || Date.now()).toLocaleDateString()}</span>
-                  <button
-                    onClick={() => handleGenerateAiAdvisory(item)}
-                    className="ai-generate-btn"
-                    disabled={isAiGenerating === item.id}
-                  >
-                    {isAiGenerating === item.id ? (
-                      <div className="loading-spinner-small"></div>
-                    ) : (
-                      <Sparkles size={14} />
-                    )}
-                    <span>{isAiGenerating === item.id ? 'Generating...' : 'Create with AI'}</span>
-                  </button>
+          {isRssLoading ? (
+            <div className="rss-loading">
+              <div className="loading-spinner small"></div>
+              <p>Loading news...</p>
+            </div>
+          ) : rssItems.length === 0 ? (
+            <div className="rss-empty">
+              <Bell size={32} className="rss-empty-icon" />
+              <p className="rss-empty-text">
+                {selectedClientId ? "No items found in assigned feeds." : "Select a client to view news."}
+              </p>
+            </div>
+          ) : (
+            <div className="rss-items">
+              {rssItems.map((item) => (
+                <div key={item.id} className="rss-item">
+                  <a href={item.link} target="_blank" rel="noopener noreferrer" className="rss-item-link">
+                    {item.title}
+                  </a>
+                  <p className="rss-item-summary">{item.summary}</p>
+                  <div className="rss-item-meta">
+                    <span className="rss-item-date">{new Date(item.published || Date.now()).toLocaleDateString()}</span>
+                    <button
+                      onClick={() => handleGenerateAiAdvisory(item)}
+                      className="ai-generate-btn"
+                      disabled={isAiGenerating === item.id}
+                    >
+                      {isAiGenerating === item.id ? (
+                        <div className="loading-spinner-small"></div>
+                      ) : (
+                        <Sparkles size={14} />
+                      )}
+                      <span>{isAiGenerating === item.id ? 'Generating...' : 'Create with AI'}</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </aside>
+              ))}
+            </div>
+          )}
+        </aside>
+      )}
 
       {/* Modals */}
       {viewingAdvisory && <FormattedAdvisoryView advisory={viewingAdvisory} onClose={() => setViewingAdvisory(null)} />}
@@ -1355,105 +1608,107 @@ This is an automated notification from the Advisory System.
                 <X size={24} />
               </button>
             </div>
-            <section className="config-section">
-              <h4 className="config-section-title">Assigned Technologies</h4>
-              <div className="tech-assignments">
-                {clientTechDetails.length > 0 ? (
-                  clientTechDetails.map((tech) => (
-                    <div key={tech.id} className="tech-assignment-card">
-                      <div className="tech-assignment-header">
+            <div className="config-modal-body">
+              <section className="config-section">
+                <h4 className="config-section-title">Assigned Technologies</h4>
+                <div className="tech-assignments">
+                  {clientTechDetails.length > 0 ? (
+                    clientTechDetails.map((tech) => (
+                      <div key={tech.id} className="tech-assignment-card">
+                        <div className="tech-assignment-header">
 
-                        <h4 className="tech-name">
-                          {tech.name || "Unnamed Technology"} <span className="tech-type">({tech.type})</span>
-                        </h4>
+                          <h4 className="tech-name">
+                            {tech.name || "Unnamed Technology"} <span className="tech-type">({tech.type})</span>
+                          </h4>
 
-                        <button
-                          onClick={() => handleDeleteClientTech(tech)}
-                          className="delete-tech-btn"
-                          title="Delete this tech stack"
-                        >
-                          <X size={16} />
-                        </button>
+                          <button
+                            onClick={() => handleDeleteClientTech(tech)}
+                            className="delete-tech-btn"
+                            title="Delete this tech stack"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
                       </div>
+                    ))
+                  ) : (
+                    <div className="no-tech-assigned">
+                      <p>No technologies assigned yet.</p>
                     </div>
-                  ))
-                ) : (
-                  <div className="no-tech-assigned">
-                    <p>No technologies assigned yet.</p>
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <div className="config-divider"></div>
-
-            <section className="config-section">
-              <h4 className="config-section-title">Assign New Tech Stack</h4>
-              <div className="assign-tech-form">
-                <div className="form-group">
-                  <label className="form-label">Category</label>
-
-                  <select
-                    className="form-select"
-                    value={selectedConfigCategory}
-                    onChange={handleConfigCategoryChange}
-                  >
-                    <option value="">-- Select Category --</option>
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
-
+                  )}
                 </div>
+              </section>
 
-                {configSubCategories.length > 0 && (
+              <div className="config-divider"></div>
+
+              <section className="config-section">
+                <h4 className="config-section-title">Assign New Tech Stack</h4>
+                <div className="assign-tech-form">
                   <div className="form-group">
-                    <label className="form-label">Sub-Category</label>
-
+                    <label className="form-label">Category</label>
 
                     <select
                       className="form-select"
-                      value={selectedConfigSubCategory}
-                      onChange={handleConfigSubCategoryChange}
+                      value={selectedConfigCategory}
+                      onChange={handleConfigCategoryChange}
                     >
-                      <option value="">-- Select Sub-Category --</option>
-                      {configSubCategories.map((sub) => (
-                        <option key={sub.id} value={sub.id}>
-                          {sub.name}
+                      <option value="">-- Select Category --</option>
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
                         </option>
                       ))}
                     </select>
 
-
                   </div>
-                )}
-                {techStacks.length > 0 && (
-                  <div className="form-group">
-                    <label className="form-label">Technology</label>
-                    <select
-                      className="form-select"
-                      value={newTechStackId}
-                      onChange={(e) => setNewTechStackId(e.target.value)}
-                      required
-                    >
-                      <option value="">-- Select Technology --</option>
-                      {techStacks.map((tech) => (
-                        <option key={tech.id} value={tech.id}>
-                          {tech.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+
+                  {configSubCategories.length > 0 && (
+                    <div className="form-group">
+                      <label className="form-label">Sub-Category</label>
 
 
-                <button onClick={handleAddClientTech} className="assign-btn">
-                  <PlusCircle size={16} /> Assign
-                </button>
-              </div>
-            </section>
+                      <select
+                        className="form-select"
+                        value={selectedConfigSubCategory}
+                        onChange={handleConfigSubCategoryChange}
+                      >
+                        <option value="">-- Select Sub-Category --</option>
+                        {configSubCategories.map((sub) => (
+                          <option key={sub.id} value={sub.id}>
+                            {sub.name}
+                          </option>
+                        ))}
+                      </select>
+
+
+                    </div>
+                  )}
+                  {techStacks.length > 0 && (
+                    <div className="form-group">
+                      <label className="form-label">Technology</label>
+                      <select
+                        className="form-select"
+                        value={newTechStackId}
+                        onChange={(e) => setNewTechStackId(e.target.value)}
+                        required
+                      >
+                        <option value="">-- Select Technology --</option>
+                        {techStacks.map((tech) => (
+                          <option key={tech.id} value={tech.id}>
+                            {tech.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+
+                  <button onClick={handleAddClientTech} className="assign-btn">
+                    <PlusCircle size={16} /> Assign
+                  </button>
+                </div>
+              </section>
+            </div>
           </div>
         </div>
       )}
@@ -1469,74 +1724,32 @@ This is an automated notification from the Advisory System.
             </div>
 
 
-            {/* <div className="form-group">
-              <label className="form-label">New Category</label>
-              <input
-                type="text"
-                placeholder="e.g., Security"
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                className="form-input"
-              />
-              <button
-                onClick={async () => {
-                  await handleAddCategory(newCategoryName);
-                  setNewCategoryName("");
-                  const updated = await fetch("http://localhost:5000/api/categories");
-                  setCategories(await updated.json());
-                }}
-                className="add-tech-btn"
-              >
-                <PlusCircle size={16} /> Add Category
-              </button>
-            </div> */}
-            {/* 
-            {selectedCategory && (
-              <div className="form-group">
-                <label className="form-label">New Subcategory</label>
-                <input
-                  type="text"
-                  placeholder="e.g., Firewall"
-                  value={newSubcategoryName}
-                  onChange={(e) => setNewSubcategoryName(e.target.value)}
-                  className="form-input"
-                />
-                <button
-                  onClick={async () => {
-                    await handleAddSubcategory(selectedCategory, newSubcategoryName);
-                    setNewSubcategoryName("");
-                    const updated = await fetch(`http://localhost:5000/api/subcategories/${selectedCategory}`);
-                    setSubCategories(await updated.json());
-                  }}
-                  className="add-tech-btn"
-                >
-                  <PlusCircle size={16} /> Add Subcategory
-                </button>
-              </div>
-            )} */}
+
 
             <form onSubmit={handleAddCategorySubTech} className="add-tech-hierarchy-form">
-              <input
-                type="text"
-                placeholder="New Category (e.g., Datacenter)"
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                className="form-input"
-              />
-              <input
-                type="text"
-                placeholder="New Subcategory (optional)"
-                value={newSubCategoryName}
-                onChange={(e) => setNewSubCategoryName(e.target.value)}
-                className="form-input"
-              />
-              <input
-                type="text"
-                placeholder="New Technology (optional)"
-                value={newTechnologyName}
-                onChange={(e) => setNewTechnologyName(e.target.value)}
-                className="form-input"
-              />
+              <div className="input-row">
+                <input
+                  type="text"
+                  placeholder="New Category (e.g., Datacenter)"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  className="form-input"
+                />
+                <input
+                  type="text"
+                  placeholder="New Subcategory (optional)"
+                  value={newSubCategoryName}
+                  onChange={(e) => setNewSubCategoryName(e.target.value)}
+                  className="form-input"
+                />
+                <input
+                  type="text"
+                  placeholder="New Technology (optional)"
+                  value={newTechnologyName}
+                  onChange={(e) => setNewTechnologyName(e.target.value)}
+                  className="form-input"
+                />
+              </div>
               <button type="submit" className="add-tech-btn">
                 <PlusCircle size={16} /> Add Tech Hierarchy
               </button>
@@ -1544,7 +1757,7 @@ This is an automated notification from the Advisory System.
 
             <div className="tech-modal-divider"></div>
 
-            <section className="rss-management-section">
+            <section className="rss-management-section tech-modal-body">
               <div className="rss-section-header">
                 <h4 className="rss-section-title">Manage RSS Feeds by Category</h4>
                 {selectedFeedCategory && rssFeeds.length > 0 && (
@@ -1564,17 +1777,18 @@ This is an automated notification from the Advisory System.
                 className="form-select tech-select"
                 value={selectedFeedCategory}
                 onChange={(e) => {
-                  const category = e.target.value
-                  setSelectedFeedCategory(category)
-                  fetchRssFeeds(category)
-                  setIsDeleteMode(false)
-                  setFeedsToDelete(new Set())
+                  const category = e.target.value;
+                  setSelectedFeedCategory(category);
+                  fetchRssFeeds(category);
+                  setIsDeleteMode(false);
+                  setFeedsToDelete(new Set());
                 }}
               >
                 <option value="">-- Select Category To Manage Feeds --</option>
-                {categories.map((cat) => (
-                  <option key={cat.name} value={cat.name}>
-                    {cat.name}
+                {/* ✅ CORRECTED: Use the techStacks state fetched from the database */}
+                {techStacks.map((tech) => (
+                  <option key={tech.id} value={tech.name}>
+                    {tech.name}
                   </option>
                 ))}
               </select>

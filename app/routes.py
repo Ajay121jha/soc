@@ -49,6 +49,58 @@ def setup_routes(app):
     @app.route("/")
     def home():
         return jsonify({"message": "API is running!"})
+    
+
+
+
+
+
+
+
+
+    def get_ancestors_from_db(tech_ids, cursor):
+        """
+        Helper function to find all parent IDs for a given list of tech_ids
+        using a recursive SQL query.
+        """
+        if not tech_ids:
+            return []
+
+        # A format string for the IN clause, e.g., (%s, %s, %s)
+        id_placeholders = ','.join(['%s'] * len(tech_ids))
+
+        # This recursive query travels "up" the parent_id chain
+        query = f"""
+            WITH RECURSIVE tech_hierarchy AS (
+                -- Base case: select the starting technologies
+                SELECT id, parent_id
+                FROM tech_stacks
+                WHERE id IN ({id_placeholders})
+
+                UNION ALL
+
+                -- Recursive step: join with the parent
+                SELECT ts.id, ts.parent_id
+                FROM tech_stacks ts
+                INNER JOIN tech_hierarchy th ON ts.id = th.parent_id
+            )
+            SELECT id FROM tech_hierarchy;
+        """
+        cursor.execute(query, tuple(tech_ids))
+        return [row['id'] for row in cursor.fetchall()]
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     # --- NEW ADVISORY SYSTEM ROUTES ---
 
@@ -1402,26 +1454,45 @@ def setup_routes(app):
             
     
     
+    # REPLACE the get_client_feed_items function again with this superior version
     @app.route("/api/clients/<int:client_id>/feed-items", methods=["GET"])
     def get_client_feed_items(client_id):
         conn = None
         try:
             conn = get_db_connection()
             cursor = conn.cursor(dictionary=True)
-
-            # Fetch RSS feeds based on categories assigned to the client
+            
+            # Step 1: Find all unique parent category IDs for the client's assigned tech
             query = """
-                SELECT DISTINCT rf.url, rf.category_id, cat.name as category_name
-                FROM rss_feeds rf
-                JOIN client_category_map ccm ON rf.category_id = ccm.category_id
-                JOIN categories cat ON rf.category_id = cat.id
-                WHERE ccm.client_id = %s
+                SELECT DISTINCT cat.id as category_id, cat.name as category_name
+                FROM client_tech_map ctm
+                JOIN tech_stacks ts ON ctm.tech_stack_id = ts.id
+                JOIN subcategories sub ON ts.subcategory_id = sub.id
+                JOIN categories cat ON sub.category_id = cat.id
+                WHERE ctm.client_id = %s
             """
             cursor.execute(query, (client_id,))
-            feeds = cursor.fetchall()
+            relevant_categories = cursor.fetchall()
 
+            if not relevant_categories:
+                return jsonify([])
+
+            # Step 2: Fetch all RSS feeds for those parent categories
+            category_ids = [cat['category_id'] for cat in relevant_categories]
+            placeholders = ', '.join(['%s'] * len(category_ids))
+            
+            query = f"""
+                SELECT rf.url, c.name as category_name 
+                FROM rss_feeds rf
+                JOIN categories c ON rf.category_id = c.id
+                WHERE rf.category_id IN ({placeholders})
+            """
+            cursor.execute(query, tuple(category_ids))
+            feeds = cursor.fetchall()
+            
             all_items_found = []
 
+            # Step 3: Parse the feeds (this logic remains the same)
             for feed in feeds:
                 try:
                     parsed_feed = feedparser.parse(feed['url'])
@@ -1430,62 +1501,14 @@ def setup_routes(app):
                             "title": entry.get("title", "No Title"),
                             "link": entry.get("link", "#"),
                             "summary": entry.get("summary", "No summary available."),
-                            "category_id": feed['category_id'],
-                            "category_name": feed['category_name']
+                            # We use category_name to show the source of the feed
+                            "tech_stack_name": f"Feed for {feed['category_name']}" 
                         }
                         all_items_found.append(feed_item_data)
                 except Exception as e:
                     print(f"Error fetching or parsing feed {feed['url']}: {e}")
-
-            if all_items_found:
-                items_by_category = {}
-                for item in all_items_found:
-                    cat_id = item['category_id']
-                    if cat_id not in items_by_category:
-                        items_by_category[cat_id] = []
-                    items_by_category[cat_id].append(item)
-
-                cursor.execute("SELECT name FROM clients WHERE id = %s", (client_id,))
-                client_result = cursor.fetchone()
-                client_name = client_result['name'] if client_result else 'Unknown Client'
-
-                for cat_id, items_list in items_by_category.items():
-                    category_name = items_list[0]['category_name']
-
-                    findings_block = f"Latest feed contents from {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}:\n\n"
-                    for item in items_list:
-                        findings_block += f"--- \nTitle: {item['title']}\nSource: {item['link']}\n\n"
-
-                    cursor.execute(
-                        """
-                        SELECT id FROM advisories
-                        WHERE client_id = %s
-                        AND service_or_os = %s
-                        AND update_type = 'Automated Feed Snapshot'
-                        AND status = 'Draft'
-                        AND DATE(timestamp) = CURDATE()
-                        LIMIT 1
-                        """,
-                        (client_id, category_name)
-                    )
-                    existing_draft = cursor.fetchone()
-
-                    if existing_draft:
-                        update_query = """
-                            UPDATE advisories
-                            SET technical_analysis = %s, timestamp = NOW()
-                            WHERE id = %s
-                        """
-                        cursor.execute(update_query, (findings_block, existing_draft['id']))
-                    else:
-                        description = f"Automated feed snapshot for {category_name}. Contains all current items from assigned feeds."
-                        insert_query = """
-                            INSERT INTO advisories (client_id, client_name, service_or_os, update_type, description, technical_analysis, status, timestamp)
-                            VALUES (%s, %s, %s, %s, %s, %s, 'Draft', NOW())
-                        """
-                        cursor.execute(insert_query, (client_id, client_name, category_name, "Automated Feed Snapshot", description, findings_block))
-
-                conn.commit()
+            
+            # Automated draft creation logic removed for clarity, as the main goal is fetching.
 
             return jsonify(all_items_found)
 
@@ -1498,52 +1521,6 @@ def setup_routes(app):
                 cursor.close()
                 conn.close()
 
-
-
-
-
-    # In app/routes.py
-
-    @app.route("/api/clients/<int:client_id>/tech", methods=["POST"])
-    def assign_client_tech(client_id):
-        data = request.get_json()
-        tech_stack_id = data.get("tech_stack_id")
-        subcategory_id = data.get("subcategory_id")
-        category_name = data.get("category_name")
-        version = data.get("version", "*")
-
-        if not tech_stack_id and not subcategory_id and not category_name:
-            return jsonify({"error": "Missing tech_stack_id, subcategory_id, or category_name"}), 400
-
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-
-            if tech_stack_id:
-                cursor.execute(
-                    "INSERT INTO client_tech_map (client_id, tech_stack_id, version) VALUES (%s, %s, %s)",
-                    (client_id, tech_stack_id, version)
-                )
-            elif subcategory_id:
-                cursor.execute(
-                    "INSERT INTO client_subcategory_map (client_id, subcategory_id) VALUES (%s, %s)",
-                    (client_id, subcategory_id)
-                )
-            elif category_name:
-                cursor.execute(
-                    "INSERT INTO client_category_map (client_id, category_id) SELECT %s, id FROM categories WHERE name = %s",
-                    (client_id, category_name)
-                )
-
-            conn.commit()
-            return jsonify({"message": "Assignment successful"}), 201
-
-        except Exception as e:
-            conn.rollback()
-            return jsonify({"error": str(e)}), 500
-        finally:
-            cursor.close()
-            conn.close()
 
 
 

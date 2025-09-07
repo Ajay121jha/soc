@@ -923,6 +923,11 @@ body {
   max-width: 700px;
 }
 
+.config-modal-body {
+  overflow-y: auto; /* Enable vertical scrolling only when needed */
+  flex: 1; /* Allow this area to grow and fill available space */
+}
+
 .config-section {
   padding: 1.5rem;
 }
@@ -939,8 +944,8 @@ body {
 }
 
 .tech-assignments {
-  max-height: 300px;
-  overflow-y: auto;
+  /* max-height: 300px;
+  overflow-y: auto; */
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -1086,11 +1091,22 @@ body {
   max-width: 600px;
 }
 
+
+.tech-modal-body {
+  flex: 1; /* Allows this section to grow and fill available space */
+  overflow-y: auto; /* Adds a scrollbar ONLY when the content is too tall */
+  min-height: 0; /* A flexbox fix to ensure shrinking works correctly */
+  display: flex; /* Helps manage the positioning of child elements */
+  flex-direction: column;
+}
+
+
+
 .add-tech-form {
   display: flex;
   gap: 1rem;
   padding: 1.5rem;
-  align-items: end;
+  align-items: flex-end;
 }
 
 .add-tech-btn {
@@ -1107,6 +1123,28 @@ body {
   transition: var(--transition-normal);
   white-space: nowrap;
 }
+
+
+
+
+
+.input-row {
+  display: flex; /* Aligns child elements horizontally */
+  gap: 1rem;     /* Adds space between the input fields */
+}
+.input-row .form-group {
+  flex: 1;
+}
+
+
+
+.hierarchy-form-container .add-tech-btn {
+  width: 100%;
+  justify-content: center;
+  margin-top: 1rem; /* Adds space below the input row */
+}
+
+
 
 .add-tech-btn:hover {
   transform: translateY(-1px);
@@ -1162,8 +1200,8 @@ body {
 }
 
 .rss-feeds-list {
-  max-height: 200px;
-  overflow-y: auto;
+  /* max-height: 200px; */
+  /* overflow-y: auto; */
   background-color: var(--gray-50);
   border-radius: var(--border-radius-md);
   padding: 0.75rem;
