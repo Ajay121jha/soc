@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import {
   Eye,
   Search,
@@ -30,6 +30,16 @@ import {
 import { Link } from "react-router-dom";
 import "../styles/Advisory.css"
 import FormattedAdvisoryView from "./FormattedAdvisoryView"
+
+
+
+
+// import { useRef } from "react";
+// const emailInputRef = useRef(null);
+
+
+
+
 
 const stripHtml = (html) => {
   if (!html) return ""
@@ -137,6 +147,47 @@ export default function AdvisorySystem() {
   const [emailTemplate, setEmailTemplate] = useState("standard")
   const [customSubject, setCustomSubject] = useState("")
   const [emailRecipients, setEmailRecipients] = useState([])
+  const [selectedTechMapId, setSelectedTechMapId] = useState(null);
+
+
+
+
+  const [contacts, setContacts] = useState([]);
+  const [formData, setFormData] = useState({
+    contact_name: '',
+    email: '',
+    designation: '',
+    level: '',
+    priority: '',
+  });
+
+
+
+
+  const [newEscalationContactName, setNewEscalationContactName] = useState("");
+  const [newEscalationContactDesignation, setNewEscalationContactDesignation] = useState("");
+  const [newEscalationContactPriority, setNewEscalationContactPriority] = useState("")
+  const [newEscalationContactEmail, setNewEscalationContactEmail] = useState("");
+  const [newEscalationContactLevel, setNewEscalationContactLevel] = useState("L1");
+  const [escalationTableContacts, setEscalationTableContacts] = useState([]);
+
+  const escalationEmailRef = useRef();
+  const escalationNameRef = useRef();
+  const escalationDesignationRef = useRef();
+  const escalationPriorityRef = useRef();
+  const escalationLevelRef = useRef();
+
+
+
+
+
+
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+
 
   const fetchAdvisories = useCallback(async () => {
     if (selectedClientId) {
@@ -157,6 +208,8 @@ export default function AdvisorySystem() {
     }
   }, [selectedClientId])
 
+
+
   const fetchTechStacks = useCallback(async (subcategoryId) => {
     try {
       const res = await fetch(`http://localhost:5000/api/tech_stacks/${subcategoryId}`)
@@ -165,8 +218,6 @@ export default function AdvisorySystem() {
       console.error("Error fetching tech stacks:", error)
     }
   }, [])
-
-
 
 
 
@@ -209,6 +260,19 @@ export default function AdvisorySystem() {
   useEffect(() => {
     fetchCategories();
   }, []);
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -266,6 +330,17 @@ export default function AdvisorySystem() {
       setEscalationContacts({ L1: [], L2: [], L3: [] });
     }
   }, [selectedClientId, fetchAdvisories, fetchEscalationMatrix])
+
+
+  
+useEffect(() => {
+  console.log("Selected Client ID:", selectedClientId);
+  console.log("RSS Items:", rssItems);
+}, [selectedClientId, rssItems]);
+
+
+
+
 
   const handleGenerateAiAdvisory = async (rssItem) => {
     setIsAiGenerating(rssItem.id);
@@ -458,6 +533,52 @@ This is an automated notification from the Advisory System.
 
 
 
+
+
+
+
+
+
+  const handleAddContact = async () => {
+    const payload = {
+      ...formData,
+      client_tech_map_id: selectedTechMapId, // You should have this from context
+    };
+
+    await fetch('/api/contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    fetchContacts(); // Refresh table
+  };
+
+
+
+
+  const fetchContacts = async () => {
+    const res = await fetch(`/api/client-tech-map/${selectedTechMapId}/co`);
+    const data = await res.json();
+    setContacts(data);
+  };
+
+  useEffect(() => {
+    if (selectedTechMapId) fetchContacts();
+  }, [selectedTechMapId]);
+
+
+
+
+
+
+
+
+
+
+
+
+
   const handleSubmitAdvisory = async (e) => {
     e.preventDefault()
     const payload = { ...newAdvisory, version: "*" };
@@ -495,56 +616,58 @@ This is an automated notification from the Advisory System.
 
 
   const handleAddClientTech = async () => {
-    if (!newTechStackId && !selectedConfigCategory && !selectedConfigSubCategory) {
-      alert("Please select a tech stack, subcategory, or category.");
+    if (!selectedConfigCategory) {
+      alert("Please select a category.");
       return;
     }
 
-    // Get category name from ID
-    const selectedCategoryObj = categories.find(cat => cat.id === selectedConfigCategory);
-    const categoryName = selectedCategoryObj?.name || null;
 
     const payload = {
       tech_stack_id: newTechStackId || null,
       subcategory_id: selectedConfigSubCategory || null,
-      category_name: categoryName,
+      category_id: selectedConfigCategory || null,
       version: "*"
     };
 
 
-
     try {
-      const response = await fetch(`http://localhost:5000/api/clients/${configuringClient.id}/tech`, {
+      await fetch(`http://localhost:5000/api/clients/${configuringClient.id}/tech`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to assign technology.");
-      }
+      alert("Technology assignment successful!");
 
-      alert("Technology assigned successfully!");
-
-
+      // Reset form
       setNewTechStackId("");
       setSelectedConfigCategory("");
       setConfigSubCategories([]);
       setSelectedConfigSubCategory("");
-      setTechStacks([]);
-
 
       // Refresh assigned techs
-      const data = await fetch(`http://localhost:5000/api/clients/${configuringClient.id}/tech`)
-        .then(res => res.json());
-
+      const response = await fetch(`http://localhost:5000/api/clients/${configuringClient.id}/tech`);
+      const data = await response.json();
       setClientTechDetails(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Failed to assign tech:", error);
-      alert("Failed to assign technology.");
+      alert("Failed to assign tech stack.");
     }
   };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -628,31 +751,80 @@ This is an automated notification from the Advisory System.
 
 
 
+  //   const handleAddHierarchy = async () => {
+  //   if (!newCategoryName.trim()) {
+  //     alert("Category name is required.");
+  //     return;
+  //   }
+
+  //   const payload = {
+  //     category: newCategoryName,
+  //     subcategory: newSubCategoryName || null,
+  //     tech_stack: newTechnologyName || null,
+  //   };
+
+  //   try {
+  //     const res = await fetch("http://localhost:5000/api/hierarchy", {
+  //       method: "POST",
+  //       headers: { "Content-Type": "application/json" },
+  //       body: JSON.stringify(payload),
+  //     });
+
+  //     const result = await res.json();
+  //     if (!res.ok) throw new Error(result.error);
+  //     alert(result.message);
+  //     setNewCategoryName("");
+  //     setNewSubCategoryName("");
+  //     setNewTechnologyName("");
+  //     fetchCategories(); // refresh dropdowns
+  //   } catch (error) {
+  //     console.error("Error adding hierarchy:", error);
+  //     alert(error.message);
+  //   }
+  // };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // In the AdvisorySystem component, replace the old handlers with these
 
-  const handleAddEscalationContact = async (newContact) => {
-    // This function will now receive a full contact object
-    if (!newContact.email.trim() || !newContact.email.includes("@")) {
-      alert("Please enter a valid email address.");
-      return;
-    }
-    try {
-      // NOTE: This assumes your backend endpoint is now at `/api/clients/${selectedClientId}/tech-contacts`
-      const response = await fetch(`http://localhost:5000/api/clients/${selectedClientId}/tech-contacts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newContact), // Send the whole object
-      });
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || "Failed to add contact");
-      }
-      fetchEscalationMatrix(); // Refresh data
-    } catch (error) {
-      console.error("Failed to add escalation contact:", error);
-      alert(`Error: ${error.message}`);
-    }
-  };
+  // const handleAddEscalationContact = async (newContact) => {
+  //   // This function will now receive a full contact object
+  //   if (!newContact.email.trim() || !newContact.email.includes("@")) {
+  //     alert("Please enter a valid email address.");
+  //     return;
+  //   }
+  //   try {
+  //     // NOTE: This assumes your backend endpoint is now at `/api/clients/${selectedClientId}/tech-contacts`
+  //     const response = await fetch(`http://localhost:5000/api/clients/${selectedClientId}/tech-contacts`, {
+  //       method: "POST",
+  //       headers: { "Content-Type": "application/json" },
+  //       body: JSON.stringify(newContact), // Send the whole object
+  //     });
+  //     if (!response.ok) {
+  //       const err = await response.json();
+  //       throw new Error(err.error || "Failed to add contact");
+  //     }
+  //     fetchEscalationMatrix(); // Refresh data
+  //   } catch (error) {
+  //     console.error("Failed to add escalation contact:", error);
+  //     alert(`Error: ${error.message}`);
+  //   }
+  // };
 
   const handleDeleteEscalationContact = async (contactId) => {
     if (!window.confirm("Are you sure you want to delete this contact?")) return;
@@ -672,52 +844,53 @@ This is an automated notification from the Advisory System.
 
 
 
-  const fetchRssFeeds = async (category) => {
-    if (!category) {
-      setRssFeeds([])
-      return
-    }
-    const techStack = techStacks.find(t => t.name === category);
-    if (!techStack) {
-      setRssFeeds([]);
-      return;
-    }
-
-    try {
-      const res = await fetch(`http://localhost:5000/api/rss-feeds?techStackId=${techStack.id}`)
-      const data = await res.json()
-      setRssFeeds(data)
-    } catch (error) {
-      console.error("Error fetching RSS feeds:", error)
-    }
+  const fetchRssFeeds = async (categoryName) => {
+  const category = categories.find(c => c.name === categoryName);
+  if (!category) {
+    setRssFeeds([]);
+    return;
   }
+
+  try {
+    const res = await fetch(`http://localhost:5000/api/rss-feeds?categoryId=${category.id}`);
+    const data = await res.json();
+    setRssFeeds(data);
+  } catch (error) {
+    console.error("Error fetching RSS feeds:", error);
+  }
+};
+
 
   const handleAddRssFeed = async () => {
-    if (!selectedFeedCategory || !newRssUrl.trim()) {
-      alert("Please select a category and enter a valid RSS URL.")
-      return
-    }
-    const techStack = techStacks.find(t => t.name === selectedFeedCategory);
-    if (!techStack) {
-      alert("Invalid category selected.");
-      return;
-    }
-    try {
-      const res = await fetch("http://localhost:5000/api/rss-feeds", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tech_stack_id: techStack.id, url: newRssUrl }),
-      })
-      const result = await res.json()
-      if (!res.ok) throw new Error(result.error || "Failed to add RSS feed")
-      setNewRssUrl("")
-      fetchRssFeeds(selectedFeedCategory)
-      alert("RSS feed added successfully!")
-    } catch (error) {
-      console.error("Error adding RSS feed:", error)
-      alert(error.message)
-    }
+  if (!selectedFeedCategory || !newRssUrl.trim()) {
+    alert("Please select a category and enter a valid RSS URL.");
+    return;
   }
+
+  const category = categories.find(c => c.name === selectedFeedCategory);
+  if (!category) {
+    alert("Invalid category selected.");
+    return;
+  }
+
+  try {
+    const res = await fetch("http://localhost:5000/api/rss-feeds", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category_id: category.id, url: newRssUrl }),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || "Failed to add RSS feed");
+
+    setNewRssUrl("");
+    fetchRssFeeds(selectedFeedCategory);
+    alert("RSS feed added successfully!");
+  } catch (error) {
+    console.error("Error adding RSS feed:", error);
+    alert(error.message);
+  }
+};
+
 
   const handleFeedSelection = (e, url) => {
     const newSelection = new Set(feedsToDelete)
@@ -734,8 +907,8 @@ This is an automated notification from the Advisory System.
       alert("No feeds selected or no category specified.")
       return
     }
-    const techStack = techStacks.find(t => t.name === selectedFeedCategory);
-    if (!techStack) {
+    const category = categories.find(c => c.name === selectedFeedCategory);
+    if (!category) {
       alert("Invalid category selected.");
       return;
     }
@@ -747,7 +920,7 @@ This is an automated notification from the Advisory System.
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tech_stack_id: techStack.id,
+          category_id: category.id,
           urls: Array.from(feedsToDelete),
         }),
       })
@@ -834,6 +1007,23 @@ This is an automated notification from the Advisory System.
 
 
 
+  const fetchEscalationTableContacts = async () => {
+    if (!selectedClientId) return;
+    try {
+      const response = await fetch(`http://localhost:5000/api/clients/${selectedClientId}/escalation-contacts`);
+      if (!response.ok) throw new Error("Failed to fetch escalation contacts");
+      const data = await response.json();
+      setEscalationTableContacts(data);
+    } catch (error) {
+      console.error("Error fetching escalation contacts:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchEscalationTableContacts();
+  }, [selectedClientId]);
+
+
 
 
 
@@ -895,15 +1085,76 @@ This is an automated notification from the Advisory System.
       setNewContactForm((prev) => ({ ...prev, [name]: value }))
     }
 
-    const handleAddNewContact = (e) => {
-      e.preventDefault()
-      const contactToAdd = {
-        ...newContactForm,
-        tags: newContactForm.tags.split(",").map(t => t.trim())
-      };
-      handleAddEscalationContact(contactToAdd);
-      setNewContactForm({ email: "", level: "L1", role: "Security Lead", department: "Security", priority: 1, location: "Headquarters", tags: "General" })
-    }
+
+
+
+
+
+
+
+
+
+
+
+    const handleAddEscalationContact = async (e) => {
+      e.preventDefault();
+
+
+      const email = escalationEmailRef.current.value;
+      const name = escalationNameRef.current.value;
+      const designation = escalationDesignationRef.current.value;
+      const level = escalationLevelRef.current.value;
+      const priority = escalationPriorityRef.current.value;
+
+      if (!email.trim() || !email.includes("@")) {
+
+        alert("Please enter a valid email address.");
+        return;
+      }
+
+      try {
+        const response = await fetch(`http://localhost:5000/api/clients/${selectedClientId}/escalation-contacts`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: email,
+            level: level,
+            contact_name: name,
+            designation: designation,
+            priority: priority,
+          }),
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || "Failed to add contact");
+        }
+
+        // Clear form
+        setNewEscalationContactEmail("");
+        setNewEscalationContactName("");
+        setNewEscalationContactDesignation("");
+        setNewEscalationContactPriority("");
+
+        fetchEscalationMatrix(); // Refresh contact list
+        fetchEscalationTableContacts();
+      } catch (error) {
+        console.error("Failed to add escalation contact:", error);
+        console.log(
+
+          {
+            email,
+            name,
+            designation,
+            level,
+            priority,
+          }
+
+        );
+        alert(`Error: ${error.message}`);
+      }
+    };
+
 
     if (!selectedClientId) {
       return (
@@ -913,6 +1164,18 @@ This is an automated notification from the Advisory System.
         </div>
       )
     }
+
+
+    // const handleEmailChange = (e) => {
+    //   setNewEscalationContactEmail(e.target.value);
+    //   if (emailInputRef.current) {
+    //     emailInputRef.current.focus();
+    //   }
+    // };
+
+
+
+
 
     const allContacts = [...(escalationContacts.L1 || []), ...(escalationContacts.L2 || []), ...(escalationContacts.L3 || [])];
     const filteredContacts = allContacts.filter(c => c.email.toLowerCase().includes(contactSearch.toLowerCase()) || (c.role && c.role.toLowerCase().includes(contactSearch.toLowerCase())));
@@ -933,22 +1196,22 @@ This is an automated notification from the Advisory System.
           <div className="contact-management-panel">
             <div className="panel-header">
               <Users2 size={20} />
-              <h3>Contact Management</h3>
+              <p>Contact Management</p>
             </div>
-            <div className="contact-toolbar">
+            {/* <div className="contact-toolbar">
               <div className="search-wrapper">
-                <Search size={18} />
-                <input type="text" placeholder="Search contacts..." value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
+
+                <input id="searc" type="text" placeholder="Search contacts..." value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
               </div>
               <div className="filter-wrapper">
                 <Filter size={18} />
-                <select value={groupBy} onChange={e => setGroupBy(e.target.value)}>
-                  <option value="department">Group by Department</option>
-                  <option value="location">Group by Location</option>
-                  <option value="level">Group by Level</option>
+                <select id="incre" value={groupBy} onChange={e => setGroupBy(e.target.value)}>
+                  <option value="Critical">Critical</option>
+                  <option value="High">High</option>
+                  <option value="Low">Low</option>
                 </select>
               </div>
-            </div>
+            </div> */}
             <div className="contact-list-area">
               {Object.keys(groupedContacts).sort().map(groupName => (
                 <div key={groupName} className="contact-group">
@@ -959,13 +1222,21 @@ This is an automated notification from the Advisory System.
                         <div className="contact-edit-form">
                           <input type="email" value={editedContactData.email} onChange={e => handleFieldChange('email', e.target.value)} />
                           <input type="text" placeholder="Role" value={editedContactData.role} onChange={e => handleFieldChange('role', e.target.value)} />
+
                           <select value={editedContactData.level} onChange={e => handleFieldChange('level', e.target.value)}>
-                            <option>L1</option><option>L2</option><option>L3</option>
+                            <option>L1</option>
+                            <option>L2</option>
+                            <option>L3</option>
                           </select>
+
                           <input type="number" placeholder="Priority" value={editedContactData.priority} onChange={e => handleFieldChange('priority', parseInt(e.target.value))} />
+
                           <input type="text" placeholder="Department" value={editedContactData.department} onChange={e => handleFieldChange('department', e.target.value)} />
+
                           <input type="text" placeholder="Location" value={editedContactData.location} onChange={e => handleFieldChange('location', e.target.value)} />
+
                           <input type="text" placeholder="Tags (comma-separated)" value={editedContactData.tags} onChange={e => handleFieldChange('tags', e.target.value)} />
+
                           <div className="contact-actions">
                             <button className="action-btn save-btn" onClick={() => handleSaveEdit(contact.id)}><Save size={14} /></button>
                             <button className="action-btn cancel-btn" onClick={handleCancelEdit}><X size={14} /></button>
@@ -996,7 +1267,117 @@ This is an automated notification from the Advisory System.
               ))}
             </div>
           </div>
-          <div className="rules-actions-panel">
+          <div className="add-contact-card">
+            <h4>Add New Contact</h4>
+            <form onSubmit={handleAddEscalationContact} className="add-contact-form-main">
+              <div className="container-1">
+
+                <input id="a"
+                  type="email"
+                  placeholder="Email Address"
+                  ref={escalationEmailRef}
+                  className="full-width-input"
+                  required
+                />
+
+
+
+                <input id="b"
+                  name="name"
+                  type="text"
+                  placeholder="Full Name"
+                  ref={escalationNameRef}
+                  className="full-width-input"
+                  required
+                />
+
+              </div>
+
+              <input
+                name="designation"
+                type="text"
+                placeholder="Designation"
+                ref={escalationDesignationRef}
+                className="full-width-input"
+                required
+              />
+
+              <div className="container-2">
+                <div className="form-grid-2">
+                  <div className="form-grid-3">
+
+                    <select id="abcd"
+                      name="level"
+                      ref={escalationLevelRef}
+                      className="form-select"
+                      required
+                    >
+                      <option value="">--select level--</option>
+                      <option value="L1">L1</option>
+                      <option value="L2">L2</option>
+                      <option value="L3">L3</option>
+                    </select>
+
+                  </div>
+                  <div className="form-grid-4">
+                    <select id="abc"
+                      name="priority"
+                      ref={escalationPriorityRef}
+                      className="form-select"
+                      required
+                    >
+                      <option value="">--select priority--</option>
+                      <option value="critical">critical</option>
+                      <option value="High">High</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Low">Low</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <button type="submit" className="submit-btn full-width">
+                <PlusCircle size={16} /> Add Contact
+              </button>
+            </form>
+          </div>
+          <div className="contact-table-section">
+            <h4>Contact List</h4>
+
+            <table>
+              <thead>
+                <tr>
+                  <th>Level</th>
+                  <th>Priority</th>
+                  <th>Email</th>
+                  <th>Name</th>
+                  <th>Designation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {escalationTableContacts.length > 0 ? (
+                  escalationTableContacts.map((contact, index) => (
+                    <tr key={index}>
+                      <td>{contact.level}</td>
+                      <td>{contact.priority}</td>
+                      <td>{contact.email}</td>
+                      <td>{contact.contact_name}</td>
+                      <td>{contact.designation}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="5">No contacts found.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+
+          </div>
+
+
+
+          {/* <div className="rules-actions-panel">
             <div className="panel-header">
               <BookText size={20} />
               <h3>Escalation Rules & Actions</h3>
@@ -1012,33 +1393,12 @@ This is an automated notification from the Advisory System.
                 ))}
               </div>
             </div>
-            <div className="add-contact-card">
-              <h4>Add New Contact</h4>
-              <form onSubmit={handleAddNewContact} className="add-contact-form-main">
-                <input name="email" type="email" placeholder="Email Address" value={newContactForm.email} onChange={handleNewContactChange} required className="full-width-input" />
-                <div className="form-grid-2">
-                  <select name="level" value={newContactForm.level} onChange={handleNewContactChange}>
-                    <option>L1</option><option>L2</option><option>L3</option>
-                  </select>
-                  <input name="role" type="text" placeholder="Role (e.g., Security Lead)" value={newContactForm.role} onChange={handleNewContactChange} />
-                </div>
-                <div className="form-grid-2">
-                  <select name="department" value={newContactForm.department} onChange={handleNewContactChange}>
-                    <option>Security</option><option>IT Operations</option><option>Engineering</option><option>Management</option>
-                  </select>
-                  <input name="priority" type="number" placeholder="Priority" min="1" value={newContactForm.priority} onChange={handleNewContactChange} />
-                </div>
-                <input name="location" type="text" placeholder="Location (e.g., Headquarters)" value={newContactForm.location} onChange={handleNewContactChange} className="full-width-input" />
-                <input name="tags" type="text" placeholder="Tags (comma-separated)" value={newContactForm.tags} onChange={handleNewContactChange} className="full-width-input" />
-                <button type="submit" className="submit-btn full-width">
-                  <PlusCircle size={16} /> Add Contact
-                </button>
-              </form>
-            </div>
-          </div>
+
+          </div> */}
         </div>
       </div>
     )
+
   }
 
 
@@ -1773,25 +2133,26 @@ This is an automated notification from the Advisory System.
                 )}
               </div>
 
+
               <select
                 className="form-select tech-select"
                 value={selectedFeedCategory}
                 onChange={(e) => {
                   const category = e.target.value;
                   setSelectedFeedCategory(category);
-                  fetchRssFeeds(category);
+                  fetchRssFeeds(category); // This needs to be updated too
                   setIsDeleteMode(false);
                   setFeedsToDelete(new Set());
                 }}
               >
                 <option value="">-- Select Category To Manage Feeds --</option>
-                {/* ✅ CORRECTED: Use the techStacks state fetched from the database */}
-                {techStacks.map((tech) => (
-                  <option key={tech.id} value={tech.name}>
-                    {tech.name}
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.name}>
+                    {cat.name}
                   </option>
                 ))}
               </select>
+
 
               <div className="rss-feeds-list">
                 {rssFeeds.length > 0 ? (
