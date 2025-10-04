@@ -1,5 +1,6 @@
-import React from 'react';
-import { X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Save, Pencil } from 'lucide-react';
+import "../styles/FormattedAdvisoryView.css";
 
 // Helper function to format the timestamp
 const formatDate = (isoString) => {
@@ -11,87 +12,151 @@ const formatDate = (isoString) => {
   });
 };
 
-// Helper function to render text with bullet points if it contains newlines
 const renderAsList = (text) => {
-  if (!text || typeof text !== 'string') {
-    return <li>Not specified.</li>;
-  }
-  // Check if there are newline characters to determine if it should be a list
+  if (!text || typeof text !== 'string') return <li>Not specified.</li>;
   if (text.includes('\n')) {
-    return text.split('\n').map((item, index) => (
-      item.trim() && <li key={index}>{item.trim()}</li>
-    ));
+    return text.split('\n').map((item, index) =>
+      item.trim() && <li key={index}>- {item.trim()}</li>
+    );
   }
-  // If no newlines, render as a single paragraph/list item
-  return <li>{text}</li>;
+  return <li>- {text}</li>;
 };
 
-export default function FormattedAdvisoryView({ advisory, onClose }) {
-  if (!advisory) return null;
+export default function FormattedAdvisoryView({ advisory, onClose, handleSaveEditedAdvisory }) {
+  const [editedAdvisory, setEditedAdvisory] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    if (advisory) {
+      setEditedAdvisory({ ...advisory });
+      setIsEditing(false); // Reset editing mode when advisory changes
+    }
+  }, [advisory]);
+
+  if (!editedAdvisory) return null;
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setEditedAdvisory((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSave = () => {
+    handleSaveEditedAdvisory(editedAdvisory);
+    onClose();
+  };
+
+  const handleCancelEdit = () => {
+    setEditedAdvisory({ ...advisory }); // Reset to original data
+    setIsEditing(false);
+  };
+
+  const isDraft = editedAdvisory.status === "Draft";
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content !max-w-4xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-start mb-4">
-          <div>
-            <h2 className="text-sm font-bold text-blue-700">GRANT THORNTON</h2>
-            <p className="text-xs text-gray-500">An instinct for growth™</p>
-          </div>
-          <button onClick={onClose} className="modal-close-icon">
+      <div className="modal-content advisory-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>GRANT THORNTON</h2>
+          <p>An instinct for growth™</p>
+          <button onClick={onClose} className="modal-close">
             <X size={24} />
           </button>
         </div>
 
-        <div className="border-t pt-4 max-h-[80vh] overflow-y-auto pr-4">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            {`${advisory?.update_type || 'General Update'} for ${advisory?.service_or_os || 'Unknown Service'}`}
-          </h1>
-          <div className="text-xs text-gray-600 bg-gray-100 p-2 rounded-md mb-6 flex flex-wrap gap-x-4 gap-y-1">
-            <span><strong>Date:</strong> {formatDate(advisory.timestamp)}</span>
-            <span>||</span>
-            <span><strong>Category:</strong> {
-              advisory?.update_type === 'Vulnerability Alert'
-                ? 'Malware' : 'General'}</span>
-            <span>||</span>
-            <span><strong>Product/Software:</strong> {advisory.service_or_os}</span>
+        <div className="modal-body">
+          <h1>{`${editedAdvisory.update_type || 'General Update'} for ${editedAdvisory.service_or_os || 'Unknown Service'}`}</h1>
+          <div className="meta-info">
+            <span><strong>Date:</strong> {formatDate(editedAdvisory.timestamp)}</span>
+            <span><strong>Category:</strong> {editedAdvisory.update_type === 'Vulnerability Alert' ? 'Malware' : 'General'}</span>
+            <span><strong>Product/Software:</strong> {editedAdvisory.service_or_os}</span>
           </div>
 
-          {/* Renders each section based on the new data fields */}
-          <div className="mb-6">
-            <h3 className="section-title">Summary</h3>
-            <p className="section-content">{advisory.description || 'No summary provided.'}</p>
+          
+
+          <div className="section">
+            <h4>Summary</h4>
+            {isDraft && isEditing ? (
+              <textarea name="description" value={editedAdvisory.description} onChange={handleChange} />
+            ) : (
+              <p>{editedAdvisory.description || 'No summary provided.'}</p>
+            )}
           </div>
 
-          <div className="mb-6">
-            <h3 className="section-title">Vulnerability Details</h3>
-            <ul className="section-content list-disc pl-5 space-y-1">{renderAsList(advisory.vulnerability_details)}</ul>
+          <div className="section">
+            <h4>Vulnerability Details</h4>
+            {isDraft && isEditing ? (
+              <textarea name="vulnerability_details" value={editedAdvisory.vulnerability_details} onChange={handleChange} />
+            ) : (
+              <ul>{renderAsList(editedAdvisory.vulnerability_details)}</ul>
+            )}
           </div>
 
-          <div className="mb-6">
-            <h3 className="section-title">Technical Analysis</h3>
-            <div className="section-content bg-gray-50 p-4 rounded-md font-mono text-sm whitespace-pre-wrap">{advisory.technical_analysis || 'No technical details available.'}</div>
+          <div className="section">
+            <h4>Technical Analysis</h4>
+            {isDraft && isEditing ? (
+              <textarea name="technical_analysis" value={editedAdvisory.technical_analysis} onChange={handleChange} />
+            ) : (
+              <p>{editedAdvisory.technical_analysis || 'No technical details available.'}</p>
+            )}
           </div>
 
-          <div className="mb-6">
-            <h3 className="section-title">Impact</h3>
-            <ul className="section-content list-disc pl-5 space-y-1">{renderAsList(advisory.impact_details)}</ul>
+          <div className="section">
+            <h4>Impact</h4>
+            {isDraft && isEditing ? (
+              <textarea name="impact_details" value={editedAdvisory.impact_details} onChange={handleChange} />
+            ) : (
+              <ul>{renderAsList(editedAdvisory.impact_details)}</ul>
+            )}
           </div>
 
-          <div className="mb-6">
-            <h3 className="section-title">Mitigation Strategies</h3>
-            <ul className="section-content list-disc pl-5 space-y-1">{renderAsList(advisory.mitigation_strategies)}</ul>
+          <div className="section">
+            <h4>Mitigation Strategies</h4>
+            {isDraft && isEditing ? (
+              <textarea name="mitigation_strategies" value={editedAdvisory.mitigation_strategies} onChange={handleChange} />
+            ) : (
+              <ul>{renderAsList(editedAdvisory.mitigation_strategies)}</ul>
+            )}
           </div>
 
-          <div className="mb-6">
-            <h3 className="section-title">Detection and Response</h3>
-            <ul className="section-content list-disc pl-5 space-y-1">{renderAsList(advisory.detection_response)}</ul>
+          <div className="section">
+            <h4>Detection and Response</h4>
+            {isDraft && isEditing ? (
+              <textarea name="detection_response" value={editedAdvisory.detection_response} onChange={handleChange} />
+            ) : (
+              <ul>{renderAsList(editedAdvisory.detection_response)}</ul>
+            )}
           </div>
 
-          <div className="mb-6">
-            <h3 className="section-title">Recommendations</h3>
-            <ul className="section-content list-disc pl-5 space-y-1">{renderAsList(advisory.recommendations)}</ul>
+          <div className="section">
+            <h4>Recommendations</h4>
+            {isDraft && isEditing ? (
+              <textarea name="recommendations" value={editedAdvisory.recommendations} onChange={handleChange} />
+            ) : (
+              <ul>{renderAsList(editedAdvisory.recommendations)}</ul>
+            )}
           </div>
         </div>
+
+        {isDraft && isEditing && (
+          <div className="modal-footer">
+            <button onClick={handleSave} className="submit-btn">
+              <Save size={16} /> Save Changes
+            </button>
+          </div>
+        )}
+
+
+        {isDraft && !isEditing && (
+            <button onClick={() => setIsEditing(true)} className="submit-btn">
+              <Pencil size={16} /> Edit Advisory
+            </button>
+          )}
+
+          {isEditing && (
+            <button onClick={handleCancelEdit} className="cancel-btn" style={{ marginTop: '10px' }}>
+              ← Back
+            </button>
+          )}
       </div>
     </div>
   );

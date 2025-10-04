@@ -332,11 +332,49 @@ export default function AdvisorySystem() {
   }, [selectedClientId, fetchAdvisories, fetchEscalationMatrix])
 
 
-  
-useEffect(() => {
-  console.log("Selected Client ID:", selectedClientId);
-  console.log("RSS Items:", rssItems);
-}, [selectedClientId, rssItems]);
+
+  useEffect(() => {
+    console.log("Selected Client ID:", selectedClientId);
+    console.log("RSS Items:", rssItems);
+  }, [selectedClientId, rssItems]);
+
+
+
+
+
+
+ const handleSaveEditedAdvisory = async (updatedAdvisory) => {
+  try {
+    const response = await fetch(`/api/advisories/${updatedAdvisory.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedAdvisory),
+    });
+
+    if (!response.ok) throw new Error('Failed to update advisory');
+
+    const result = await response.json();
+    await fetchAdvisories(); // Refresh list
+    setViewingAdvisory(result); // Show updated advisory
+  } catch (error) {
+    console.error('Error updating advisory:', error);
+    alert('Failed to save changes. Please try again.');
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -348,7 +386,9 @@ useEffect(() => {
       const response = await fetch('http://localhost:5000/api/generate-advisory-from-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: rssItem.title, summary: rssItem.summary }),
+        body: JSON.stringify({ title: rssItem.title, summary: rssItem.summary,
+          client_techs: clientTechDetails.map(t => t.name)
+         }),
       });
 
       if (!response.ok) {
@@ -580,36 +620,48 @@ This is an automated notification from the Advisory System.
 
 
   const handleSubmitAdvisory = async (e) => {
-    e.preventDefault()
-    const payload = { ...newAdvisory, version: "*" };
-    const { techStackId, updateType, description } = payload;
+    e.preventDefault();
 
-    if (!techStackId || !updateType || !description) {
-      alert("Please fill out the basic advisory fields (Tech, Type, Summary).")
-      return
+    const { techStackId, updateType, description } = newAdvisory;
+    const subcategoryId = selectedSubCategory;
+    const categoryId = selectedCategory;
+
+    if (!(techStackId || subcategoryId || categoryId) || !updateType || !description) {
+      alert("Please fill out the basic advisory fields (Tech, Type, Summary).");
+      return;
     }
-    setIsLoading(true)
+
+    const payload = {
+      ...newAdvisory,
+      techStackId,
+      subcategoryId,
+      categoryId,
+      version: "*"
+    };
+
+    setIsLoading(true);
     try {
       const response = await fetch("http://localhost:5000/api/advisories/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error || "Failed to submit bulk advisory")
-      fetchAdvisories()
-      alert(result.message)
-      setNewAdvisory(initialAdvisoryState)
-      setSelectedCategory("")
-      setSubCategories([])
-      setSelectedSubCategory("")
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to submit bulk advisory");
+
+      fetchAdvisories();
+      alert(result.message);
+      setNewAdvisory(initialAdvisoryState);
+      setSelectedCategory("");
+      setSubCategories([]);
+      setSelectedSubCategory("");
     } catch (error) {
-      console.error("Error submitting bulk advisory:", error)
-      alert(error.message)
+      console.error("Error submitting bulk advisory:", error);
+      alert(error.message);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
 
 
@@ -845,51 +897,51 @@ This is an automated notification from the Advisory System.
 
 
   const fetchRssFeeds = async (categoryName) => {
-  const category = categories.find(c => c.name === categoryName);
-  if (!category) {
-    setRssFeeds([]);
-    return;
-  }
+    const category = categories.find(c => c.name === categoryName);
+    if (!category) {
+      setRssFeeds([]);
+      return;
+    }
 
-  try {
-    const res = await fetch(`http://localhost:5000/api/rss-feeds?categoryId=${category.id}`);
-    const data = await res.json();
-    setRssFeeds(data);
-  } catch (error) {
-    console.error("Error fetching RSS feeds:", error);
-  }
-};
+    try {
+      const res = await fetch(`http://localhost:5000/api/rss-feeds?categoryId=${category.id}`);
+      const data = await res.json();
+      setRssFeeds(data);
+    } catch (error) {
+      console.error("Error fetching RSS feeds:", error);
+    }
+  };
 
 
   const handleAddRssFeed = async () => {
-  if (!selectedFeedCategory || !newRssUrl.trim()) {
-    alert("Please select a category and enter a valid RSS URL.");
-    return;
-  }
+    if (!selectedFeedCategory || !newRssUrl.trim()) {
+      alert("Please select a category and enter a valid RSS URL.");
+      return;
+    }
 
-  const category = categories.find(c => c.name === selectedFeedCategory);
-  if (!category) {
-    alert("Invalid category selected.");
-    return;
-  }
+    const category = categories.find(c => c.name === selectedFeedCategory);
+    if (!category) {
+      alert("Invalid category selected.");
+      return;
+    }
 
-  try {
-    const res = await fetch("http://localhost:5000/api/rss-feeds", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category_id: category.id, url: newRssUrl }),
-    });
-    const result = await res.json();
-    if (!res.ok) throw new Error(result.error || "Failed to add RSS feed");
+    try {
+      const res = await fetch("http://localhost:5000/api/rss-feeds", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category_id: category.id, url: newRssUrl }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Failed to add RSS feed");
 
-    setNewRssUrl("");
-    fetchRssFeeds(selectedFeedCategory);
-    alert("RSS feed added successfully!");
-  } catch (error) {
-    console.error("Error adding RSS feed:", error);
-    alert(error.message);
-  }
-};
+      setNewRssUrl("");
+      fetchRssFeeds(selectedFeedCategory);
+      alert("RSS feed added successfully!");
+    } catch (error) {
+      console.error("Error adding RSS feed:", error);
+      alert(error.message);
+    }
+  };
 
 
   const handleFeedSelection = (e, url) => {
@@ -1804,15 +1856,15 @@ This is an automated notification from the Advisory System.
                   </div>
 
                   <div className="advisory-actions">
-                    {advisory.status === "Draft" && (
-                      <button
-                        onClick={(e) => handleOpenEditModal(advisory, e)}
-                        className="action-btn edit-btn"
-                        title="Edit"
-                      >
-                        <Edit3 size={14} />
-                      </button>
-                    )}
+                    {/* {advisory.status === "Draft" && (
+                      // <button
+                      //   onClick={(e) => handleOpenEditModal(advisory, e)}
+                      //   className="action-btn edit-btn"
+                      //   title="Edit"
+                      // >
+                      //   <Edit3 size={14} />
+                      // </button>
+                    )} */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -1898,7 +1950,13 @@ This is an automated notification from the Advisory System.
       )}
 
       {/* Modals */}
-      {viewingAdvisory && <FormattedAdvisoryView advisory={viewingAdvisory} onClose={() => setViewingAdvisory(null)} />}
+      {viewingAdvisory && 
+<FormattedAdvisoryView
+  advisory={viewingAdvisory}
+  onClose={() => setViewingAdvisory(null)}
+  handleSaveEditedAdvisory={handleSaveEditedAdvisory}
+/>
+}
 
       {showEmailModal && emailPreview && (
         <div className="modal-overlay" onClick={() => setShowEmailModal(false)}>
@@ -1951,254 +2009,271 @@ This is an automated notification from the Advisory System.
         </div>
       )}
 
-      {showEditModal && editingAdvisory && (
-        <div className="modal-overlay" onClick={handleCloseEditModal}>
-          <div className="modal-content edit-modal" onClick={(e) => e.stopPropagation()}>
-            {/* Edit Modal Content */}
-          </div>
-        </div>
-      )}
 
-      {showConfigModal && configuringClient && (
-        <div className="modal-overlay" onClick={() => setShowConfigModal(false)}>
-          <div className="modal-content config-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">Configure Tech for: {configuringClient.name}</h3>
-              <button onClick={() => setShowConfigModal(false)} className="modal-close">
-                <X size={24} />
-              </button>
-            </div>
-            <div className="config-modal-body">
-              <section className="config-section">
-                <h4 className="config-section-title">Assigned Technologies</h4>
-                <div className="tech-assignments">
-                  {clientTechDetails.length > 0 ? (
-                    clientTechDetails.map((tech) => (
-                      <div key={tech.id} className="tech-assignment-card">
-                        <div className="tech-assignment-header">
 
-                          <h4 className="tech-name">
-                            {tech.name || "Unnamed Technology"} <span className="tech-type">({tech.type})</span>
-                          </h4>
 
-                          <button
-                            onClick={() => handleDeleteClientTech(tech)}
-                            className="delete-tech-btn"
-                            title="Delete this tech stack"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="no-tech-assigned">
-                      <p>No technologies assigned yet.</p>
-                    </div>
-                  )}
+
+
+
+
+
+
+
+      
+
+      
+
+
+
+
+
+
+
+
+
+
+
+
+          {showConfigModal && configuringClient && (
+            <div className="modal-overlay" onClick={() => setShowConfigModal(false)}>
+              <div className="modal-content config-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-header">
+                  <h3 className="modal-title">Configure Tech for: {configuringClient.name}</h3>
+                  <button onClick={() => setShowConfigModal(false)} className="modal-close">
+                    <X size={24} />
+                  </button>
                 </div>
-              </section>
+                <div className="config-modal-body">
+                  <section className="config-section">
+                    <h4 className="config-section-title">Assigned Technologies</h4>
+                    <div className="tech-assignments">
+                      {clientTechDetails.length > 0 ? (
+                        clientTechDetails.map((tech) => (
+                          <div key={tech.id} className="tech-assignment-card">
+                            <div className="tech-assignment-header">
 
-              <div className="config-divider"></div>
+                              <h4 className="tech-name">
+                                {tech.name || "Unnamed Technology"} <span className="tech-type">({tech.type})</span>
+                              </h4>
 
-              <section className="config-section">
-                <h4 className="config-section-title">Assign New Tech Stack</h4>
-                <div className="assign-tech-form">
-                  <div className="form-group">
-                    <label className="form-label">Category</label>
+                              <button
+                                onClick={() => handleDeleteClientTech(tech)}
+                                className="delete-tech-btn"
+                                title="Delete this tech stack"
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="no-tech-assigned">
+                          <p>No technologies assigned yet.</p>
+                        </div>
+                      )}
+                    </div>
+                  </section>
 
-                    <select
-                      className="form-select"
-                      value={selectedConfigCategory}
-                      onChange={handleConfigCategoryChange}
-                    >
-                      <option value="">-- Select Category --</option>
-                      {categories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="config-divider"></div>
 
+                  <section className="config-section">
+                    <h4 className="config-section-title">Assign New Tech Stack</h4>
+                    <div className="assign-tech-form">
+                      <div className="form-group">
+                        <label className="form-label">Category</label>
+
+                        <select
+                          className="form-select"
+                          value={selectedConfigCategory}
+                          onChange={handleConfigCategoryChange}
+                        >
+                          <option value="">-- Select Category --</option>
+                          {categories.map((cat) => (
+                            <option key={cat.id} value={cat.id}>
+                              {cat.name}
+                            </option>
+                          ))}
+                        </select>
+
+                      </div>
+
+                      {configSubCategories.length > 0 && (
+                        <div className="form-group">
+                          <label className="form-label">Sub-Category</label>
+
+
+                          <select
+                            className="form-select"
+                            value={selectedConfigSubCategory}
+                            onChange={handleConfigSubCategoryChange}
+                          >
+                            <option value="">-- Select Sub-Category --</option>
+                            {configSubCategories.map((sub) => (
+                              <option key={sub.id} value={sub.id}>
+                                {sub.name}
+                              </option>
+                            ))}
+                          </select>
+
+
+                        </div>
+                      )}
+                      {techStacks.length > 0 && (
+                        <div className="form-group">
+                          <label className="form-label">Technology</label>
+                          <select
+                            className="form-select"
+                            value={newTechStackId}
+                            onChange={(e) => setNewTechStackId(e.target.value)}
+                            required
+                          >
+                            <option value="">-- Select Technology --</option>
+                            {techStacks.map((tech) => (
+                              <option key={tech.id} value={tech.id}>
+                                {tech.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+
+                      <button onClick={handleAddClientTech} className="assign-btn">
+                        <PlusCircle size={16} /> Assign
+                      </button>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showTechModal && (
+            <div className="modal-overlay" onClick={() => setShowTechModal(false)}>
+              <div className="modal-content tech-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-header">
+                  <h3 className="modal-title">Manage Tech Stacks & Feeds</h3>
+                  <button onClick={() => setShowTechModal(false)} className="modal-close">
+                    <X size={24} />
+                  </button>
+                </div>
+
+
+
+
+                <form onSubmit={handleAddCategorySubTech} className="add-tech-hierarchy-form">
+                  <div className="input-row">
+                    <input
+                      type="text"
+                      placeholder="New Category (e.g., Datacenter)"
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      className="form-input"
+                    />
+                    <input
+                      type="text"
+                      placeholder="New Subcategory (optional)"
+                      value={newSubCategoryName}
+                      onChange={(e) => setNewSubCategoryName(e.target.value)}
+                      className="form-input"
+                    />
+                    <input
+                      type="text"
+                      placeholder="New Technology (optional)"
+                      value={newTechnologyName}
+                      onChange={(e) => setNewTechnologyName(e.target.value)}
+                      className="form-input"
+                    />
+                  </div>
+                  <button type="submit" className="add-tech-btn">
+                    <PlusCircle size={16} /> Add Tech Hierarchy
+                  </button>
+                </form>
+
+                <div className="tech-modal-divider"></div>
+
+                <section className="rss-management-section tech-modal-body">
+                  <div className="rss-section-header">
+                    <h4 className="rss-section-title">Manage RSS Feeds by Category</h4>
+                    {selectedFeedCategory && rssFeeds.length > 0 && (
+                      <button
+                        onClick={() => {
+                          setIsDeleteMode(!isDeleteMode)
+                          setFeedsToDelete(new Set())
+                        }}
+                        className={`toggle-delete-btn ${isDeleteMode ? "active" : ""}`}
+                      >
+                        {isDeleteMode ? "Cancel" : "Delete Feeds"}
+                      </button>
+                    )}
                   </div>
 
-                  {configSubCategories.length > 0 && (
-                    <div className="form-group">
-                      <label className="form-label">Sub-Category</label>
 
-
-                      <select
-                        className="form-select"
-                        value={selectedConfigSubCategory}
-                        onChange={handleConfigSubCategoryChange}
-                      >
-                        <option value="">-- Select Sub-Category --</option>
-                        {configSubCategories.map((sub) => (
-                          <option key={sub.id} value={sub.id}>
-                            {sub.name}
-                          </option>
-                        ))}
-                      </select>
-
-
-                    </div>
-                  )}
-                  {techStacks.length > 0 && (
-                    <div className="form-group">
-                      <label className="form-label">Technology</label>
-                      <select
-                        className="form-select"
-                        value={newTechStackId}
-                        onChange={(e) => setNewTechStackId(e.target.value)}
-                        required
-                      >
-                        <option value="">-- Select Technology --</option>
-                        {techStacks.map((tech) => (
-                          <option key={tech.id} value={tech.id}>
-                            {tech.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-
-                  <button onClick={handleAddClientTech} className="assign-btn">
-                    <PlusCircle size={16} /> Assign
-                  </button>
-                </div>
-              </section>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showTechModal && (
-        <div className="modal-overlay" onClick={() => setShowTechModal(false)}>
-          <div className="modal-content tech-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">Manage Tech Stacks & Feeds</h3>
-              <button onClick={() => setShowTechModal(false)} className="modal-close">
-                <X size={24} />
-              </button>
-            </div>
-
-
-
-
-            <form onSubmit={handleAddCategorySubTech} className="add-tech-hierarchy-form">
-              <div className="input-row">
-                <input
-                  type="text"
-                  placeholder="New Category (e.g., Datacenter)"
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  className="form-input"
-                />
-                <input
-                  type="text"
-                  placeholder="New Subcategory (optional)"
-                  value={newSubCategoryName}
-                  onChange={(e) => setNewSubCategoryName(e.target.value)}
-                  className="form-input"
-                />
-                <input
-                  type="text"
-                  placeholder="New Technology (optional)"
-                  value={newTechnologyName}
-                  onChange={(e) => setNewTechnologyName(e.target.value)}
-                  className="form-input"
-                />
-              </div>
-              <button type="submit" className="add-tech-btn">
-                <PlusCircle size={16} /> Add Tech Hierarchy
-              </button>
-            </form>
-
-            <div className="tech-modal-divider"></div>
-
-            <section className="rss-management-section tech-modal-body">
-              <div className="rss-section-header">
-                <h4 className="rss-section-title">Manage RSS Feeds by Category</h4>
-                {selectedFeedCategory && rssFeeds.length > 0 && (
-                  <button
-                    onClick={() => {
-                      setIsDeleteMode(!isDeleteMode)
-                      setFeedsToDelete(new Set())
+                  <select
+                    className="form-select tech-select"
+                    value={selectedFeedCategory}
+                    onChange={(e) => {
+                      const category = e.target.value;
+                      setSelectedFeedCategory(category);
+                      fetchRssFeeds(category); // This needs to be updated too
+                      setIsDeleteMode(false);
+                      setFeedsToDelete(new Set());
                     }}
-                    className={`toggle-delete-btn ${isDeleteMode ? "active" : ""}`}
                   >
-                    {isDeleteMode ? "Cancel" : "Delete Feeds"}
-                  </button>
-                )}
-              </div>
+                    <option value="">-- Select Category To Manage Feeds --</option>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.name}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
 
 
-              <select
-                className="form-select tech-select"
-                value={selectedFeedCategory}
-                onChange={(e) => {
-                  const category = e.target.value;
-                  setSelectedFeedCategory(category);
-                  fetchRssFeeds(category); // This needs to be updated too
-                  setIsDeleteMode(false);
-                  setFeedsToDelete(new Set());
-                }}
-              >
-                <option value="">-- Select Category To Manage Feeds --</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.name}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
+                  <div className="rss-feeds-list">
+                    {rssFeeds.length > 0 ? (
+                      rssFeeds.map((feed, index) => (
+                        <div key={index} className="rss-feed-item">
+                          {isDeleteMode && (
+                            <input
+                              type="checkbox"
+                              className="feed-checkbox"
+                              checked={feedsToDelete.has(feed.url)}
+                              onChange={(e) => handleFeedSelection(e, feed.url)}
+                            />
+                          )}
+                          <span className="feed-url">{feed.url}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="no-feeds">No feeds for this category.</p>
+                    )}
+                  </div>
 
+                  {isDeleteMode && feedsToDelete.size > 0 && (
+                    <button onClick={handleDeleteRssFeeds} className="delete-feeds-btn">
+                      Delete ({feedsToDelete.size}) Selected Feed(s)
+                    </button>
 
-              <div className="rss-feeds-list">
-                {rssFeeds.length > 0 ? (
-                  rssFeeds.map((feed, index) => (
-                    <div key={index} className="rss-feed-item">
-                      {isDeleteMode && (
-                        <input
-                          type="checkbox"
-                          className="feed-checkbox"
-                          checked={feedsToDelete.has(feed.url)}
-                          onChange={(e) => handleFeedSelection(e, feed.url)}
-                        />
-                      )}
-                      <span className="feed-url">{feed.url}</span>
+                  )}
+
+                  {!isDeleteMode && (
+                    <div className="add-rss-form">
+                      <input
+                        type="text"
+                        placeholder="https://example.com/rss"
+                        value={newRssUrl}
+                        onChange={(e) => setNewRssUrl(e.target.value)}
+                        className="form-input"
+                      />
+                      <button onClick={handleAddRssFeed} className="add-rss-btn">
+                        Add URL
+                      </button>
                     </div>
-                  ))
-                ) : (
-                  <p className="no-feeds">No feeds for this category.</p>
-                )}
+                  )}
+                </section>
               </div>
-
-              {isDeleteMode && feedsToDelete.size > 0 && (
-                <button onClick={handleDeleteRssFeeds} className="delete-feeds-btn">
-                  Delete ({feedsToDelete.size}) Selected Feed(s)
-                </button>
-
-              )}
-
-              {!isDeleteMode && (
-                <div className="add-rss-form">
-                  <input
-                    type="text"
-                    placeholder="https://example.com/rss"
-                    value={newRssUrl}
-                    onChange={(e) => setNewRssUrl(e.target.value)}
-                    className="form-input"
-                  />
-                  <button onClick={handleAddRssFeed} className="add-rss-btn">
-                    Add URL
-                  </button>
-                </div>
-              )}
-            </section>
-          </div>
+            </div>
+          )}
         </div>
-      )}
-    </div>
-  )
-}
+      )
+      }

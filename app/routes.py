@@ -873,9 +873,11 @@ def setup_routes(app):
 
             for feed in feeds:
                 try:
-                    response = requests.get(feed['url'], headers=headers, timeout=10)
+                    response = requests.get(feed['url'], headers=headers, timeout=10, verify=False)
                     parsed_feed = feedparser.parse(response.content)
                     print(f"Parsing feed: {feed['url']} — Entries found: {len(parsed_feed.entries)}")
+                    # this is use for the debugging of the rss feed
+                    # print(response.content.decode('utf-8'))
 
                     for entry in parsed_feed.entries:
                         all_items_found.append({
@@ -887,6 +889,8 @@ def setup_routes(app):
                         })
                 except Exception as e:
                     print(f"Error parsing feed {feed['url']}: {e}")
+                    # print(response.content.decode('utf-8'))
+
 
             return jsonify(all_items_found)
 
@@ -900,6 +904,88 @@ def setup_routes(app):
 
 
 
+    @app.route("/api/advisories/bulk", methods=["POST"])
+    def create_bulk_advisory():
+        data = request.get_json()
+
+        if not any(data.get(key) for key in ["techStackId", "subcategoryId", "categoryId"]) or not data.get("updateType") or not data.get("description"):
+         jsonify({"error": "Missing required advisory fields"}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Get client_id and client_name from categories
+            client_info = None
+
+            if data.get("techStackId"):
+                cursor.execute("""
+                    SELECT ctm.client_id, c.name
+                    FROM client_tech_map ctm
+                    JOIN clients c ON ctm.client_id = c.id
+                    WHERE ctm.tech_stack_id = %s
+                    LIMIT 1
+                """, (data["techStackId"],))
+                client_info = cursor.fetchone()
+
+            elif data.get("subcategoryId"):
+                cursor.execute("""
+                    SELECT csm.client_id, c.name
+                    FROM client_subcategory_map csm
+                    JOIN clients c ON csm.client_id = c.id
+                    WHERE csm.subcategory_id = %s
+                    LIMIT 1
+                """, (data["subcategoryId"],))
+                client_info = cursor.fetchone()
+
+            elif data.get("categoryId"):
+                cursor.execute("""
+                    SELECT ccm.client_id, c.name
+                    FROM client_category_map ccm
+                    JOIN clients c ON ccm.client_id = c.id
+                    WHERE ccm.category_id = %s
+                    LIMIT 1
+                """, (data["categoryId"],))
+                client_info = cursor.fetchone()
+                
+
+            if not client_info:
+                return jsonify({"error": "Client not found for the given tech stack"}), 404
+
+            client_id, client_name = client_info
+
+            cursor.execute("""
+                INSERT INTO advisories (
+                    client_id, client_name, service_or_os, update_type, description,
+                    advisory_content, timestamp, status,
+                    vulnerability_details, technical_analysis, impact_details,
+                    mitigation_strategies, detection_response, recommendations
+                ) VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                client_id,
+                client_name,
+                data.get("service_or_os", "Unknown"),
+                data["updateType"],
+                data["description"],
+                data.get("description", ""),  # advisory_content can be same as description
+                data.get("status", "Draft"),
+                data.get("vulnerability_details", ""),
+                data.get("technical_analysis", ""),
+                data.get("impact_details", ""),
+                data.get("mitigation_strategies", ""),
+                data.get("detection_response", ""),
+                data.get("recommendations", "")
+            ))
+
+            conn.commit()
+            return jsonify({"message": "Advisory created successfully"}), 201
+
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()
 
 
 
@@ -907,11 +993,48 @@ def setup_routes(app):
    
 
             
-            
+    @app.route("/api/clients/<int:client_id>/advisories", methods=["GET"])
+    def get_client_advisories(client_id):
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute("""
+                SELECT id, update_type, description, status, timestamp, service_or_os
+                FROM advisories
+                WHERE client_id = %s
+                ORDER BY timestamp DESC
+            """, (client_id,))
+            advisories = cursor.fetchall()
+            return jsonify(advisories)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()
 
 
 
 
+
+    @app.route("/api/generate-advisory-from-url", methods=["POST"])
+    def generate_advisory_from_url():
+        data = request.get_json()
+        title = data.get("title", "")
+        summary = data.get("summary", "")
+        client_techs = data.get("client_techs", [])  # 👈 Receive techs here
+
+        # TODO: Use NLP to match summary/title with client_techs
+
+        return jsonify({
+            "summary": summary,
+            "update_type": "Vulnerability Alert",
+            "vulnerability_details": "",
+            "technical_analysis": "",
+            "impact_assessment": "",
+            "mitigation_strategies": "",
+            "detection_and_response": "",
+            "recommendations": ""
+        })
 
 
     
